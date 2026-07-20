@@ -21,8 +21,8 @@ android {
         minSdk = 26
         targetSdk = 35
         versionName = "1.3.3"
-        val versionParts = versionName.split(".")
-        versionCode = 10000 * versionParts[0].toInt() + 100 * versionParts[1].toInt() + versionParts[2].toInt()
+        val versionParts = versionName?.split(".")
+        versionCode = 10000 * versionParts?.get(0)!!.toInt() + 100 * versionParts[1].toInt() + versionParts[2].toInt()
     }
 
     signingConfigs {
