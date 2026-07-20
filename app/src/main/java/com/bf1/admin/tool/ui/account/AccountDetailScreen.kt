@@ -77,7 +77,7 @@ fun AccountDetailScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${info.latestVersion} → 当前 v${BuildConfig.VERSION_NAME}",
+                        "当前 v${BuildConfig.VERSION_NAME} → ${info.latestVersion}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -195,6 +195,10 @@ fun AccountDetailScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text("BF1 管理员工具", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text("作者:acdc",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     Text("当前版本: ${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodySmall,
