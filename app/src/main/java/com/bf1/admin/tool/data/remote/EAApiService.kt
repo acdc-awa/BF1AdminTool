@@ -44,13 +44,6 @@ class EAApiService {
         .followSslRedirects(false)
         .build()
 
-    private val noRedirectClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .build()
-
     // ═══════════════════════════════════════════════════
     // Token 缓存（进程内存，不持久化 — 重启后从 remid/sid 重新获取）
     // ═══════════════════════════════════════════════════
@@ -154,15 +147,6 @@ class EAApiService {
             cachedSessionRemid = remid
             sessionIdRefreshTime = System.currentTimeMillis()
             sessionId
-        }
-    }
-
-    fun verifyToken(remid: String, sid: String): Boolean {
-        return try {
-            getAccessToken("remid=$remid; sid=$sid")
-            true
-        } catch (e: Exception) {
-            false
         }
     }
 
@@ -270,7 +254,7 @@ class EAApiService {
             .header("Cookie", cookieHeader)
             .build()
 
-        noRedirectClient.newCall(request).execute().use { response ->
+        client.newCall(request).execute().use { response ->
             // 被动更新 remid/sid（对应 EAappEmulater EaApi.UpdateCookie）
             updateCookiesFromResponse(response)
 
