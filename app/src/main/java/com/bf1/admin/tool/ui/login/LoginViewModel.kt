@@ -55,7 +55,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loginWithCookiesFromWebView(rawCookies: String, accessToken: String? = null) {
+    fun loginWithCookiesFromWebView(rawCookies: String) {
         val result = CookieHelper.parseWebViewCookies(rawCookies)
         if (result == null) {
             viewModelScope.launch { _message.emit("未检测到 remid 或 sid cookie") }

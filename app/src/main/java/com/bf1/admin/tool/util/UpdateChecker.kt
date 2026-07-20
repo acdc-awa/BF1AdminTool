@@ -126,7 +126,6 @@ object UpdateChecker {
 
             val source = body.source()
             val sink = apkFile.sink().buffer()
-            var downloaded = 0L
 
             // 带缓冲的流式下载
             val buffer = okio.Buffer()
@@ -134,7 +133,6 @@ object UpdateChecker {
                 val read = source.read(buffer, 8192)
                 if (read == -1L) break
                 sink.write(buffer, read)
-                downloaded += read
             }
             source.close()
             sink.close()
