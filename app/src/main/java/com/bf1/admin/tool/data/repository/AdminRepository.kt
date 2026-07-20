@@ -64,7 +64,5 @@ class AdminRepository(
     fun removeAdmin(sessionId: String, serverId: String, personaId: String) =
         api.removeAdmin(sessionId, serverId, personaId)
 
-    fun verifyToken(remid: String, sid: String) = api.verifyToken(remid, sid)
-
     fun getWelcomeMessage(sessionId: String) = api.getWelcomeMessage(sessionId)
 }

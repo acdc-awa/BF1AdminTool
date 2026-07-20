@@ -31,19 +31,4 @@ object CookieHelper {
         }
         return extractCookiesOrNull(rawCookies)
     }
-
-    /**
-     * 从 OAuth 重定向 URL fragment 中提取 access_token
-     * 对应 EAappEmulater LoginWindow 中解析 #access_token= 的逻辑
-     */
-    fun extractAccessToken(url: String): String? {
-        val fragmentIndex = url.lastIndexOf('#')
-        if (fragmentIndex == -1) return null
-        val fragment = url.substring(fragmentIndex + 1)
-        val params = fragment.split("&").associate {
-            val parts = it.split("=", limit = 2)
-            if (parts.size == 2) parts[0] to parts[1] else parts[0] to ""
-        }
-        return params["access_token"]
-    }
 }

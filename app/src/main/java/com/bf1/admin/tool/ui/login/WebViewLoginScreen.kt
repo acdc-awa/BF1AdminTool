@@ -83,7 +83,6 @@ fun WebViewLoginScreen(
     var extractionTriggered by remember { mutableStateOf(false) }
     var showingOTCMessage by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
-    var savedAccessToken by remember { mutableStateOf<String?>(null) }
     var isPageLoading by remember { mutableStateOf(true) }
     var pageProgress by remember { mutableFloatStateOf(0f) }
 
@@ -133,12 +132,7 @@ fun WebViewLoginScreen(
                                     }
                                 }
 
-                                val bridge = EaLoginBridge { redirectUrl ->
-                                    val token = CookieHelper.extractAccessToken(redirectUrl)
-                                    if (token != null) {
-                                        savedAccessToken = token
-                                    }
-                                }
+                                val bridge = EaLoginBridge { }
                                 addJavascriptInterface(bridge, "EaBridge")
 
                             fun tryExtractCookies(wv: WebView?) {
@@ -170,8 +164,7 @@ fun WebViewLoginScreen(
                                     val (remid, sid) = result
                                     wv?.loadUrl("about:blank")
                                     viewModel.loginWithCookiesFromWebView(
-                                        rawCookies = "remid=$remid; sid=$sid",
-                                        accessToken = savedAccessToken
+                                        rawCookies = "remid=$remid; sid=$sid"
                                     )
                                 }
                             }
