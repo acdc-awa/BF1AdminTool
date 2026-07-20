@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val db = (application as BF1AdminApp).database
     private val accountRepo = AccountRepository(db.accountDao(), application)
-    private val adminRepo = AdminRepository()
+    private val adminRepo = AdminRepository(accountRepo)
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()

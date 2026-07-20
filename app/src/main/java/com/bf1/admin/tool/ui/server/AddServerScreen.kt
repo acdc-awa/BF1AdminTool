@@ -29,7 +29,7 @@ class AddServerViewModel(application: Application) : AndroidViewModel(applicatio
     private val db = (application as BF1AdminApp).database
     private val accountRepo = AccountRepository(db.accountDao(), application)
     private val serverRepo = ServerRepository(db.serverDao())
-    private val adminRepo = AdminRepository()
+    private val adminRepo = AdminRepository(accountRepo)
 
     private var cachedSessionId: String? = null
 
