@@ -24,6 +24,7 @@ import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.util.UpdateChecker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +58,7 @@ fun AdminScreen(
     var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     // 首次加载时检查更新
     LaunchedEffect(Unit) {
@@ -108,12 +110,23 @@ fun AdminScreen(
     // 更新提醒弹窗
     if (showUpdateDialog && updateInfo != null) {
         val info = updateInfo!!
+        var isDownloading by remember { mutableStateOf(false) }
+        var downloadError by remember { mutableStateOf<String?>(null) }
+        val canInAppUpdate = info.apkAssetUrl != null
+
         AlertDialog(
-            onDismissRequest = { showUpdateDialog = false },
-            icon = { Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary) },
+            onDismissRequest = { if (!isDownloading) showUpdateDialog = false },
+            icon = {
+                if (isDownloading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
+            },
             title = {
                 Column {
-                    Text("发现新版本", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (isDownloading) "正在下载..."
+                        else "发现新版本",
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "${info.latestVersion} → 当前 ${BuildConfig.VERSION_NAME}",
@@ -124,31 +137,55 @@ fun AdminScreen(
             },
             text = {
                 Column {
-                    if (info.releaseNotes.isNotBlank()) {
-                        Text(
-                            info.releaseNotes.take(300),
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    if (isDownloading) {
+                        Text("正在下载更新包，请稍候...", style = MaterialTheme.typography.bodySmall)
+                    } else if (downloadError != null) {
+                        Text(downloadError!!, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    } else if (info.releaseNotes.isNotBlank()) {
+                        Text(info.releaseNotes.take(300), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
-                        } catch (_: Exception) {}
-                        showUpdateDialog = false
-                    },
-                    shape = RoundedCornerShape(50)
-                ) {
-                    Text("前往下载")
+                if (canInAppUpdate) {
+                    Button(
+                        onClick = {
+                            isDownloading = true
+                            downloadError = null
+                            coroutineScope.launch {
+                                val result = UpdateChecker.downloadAndInstall(context, info.apkAssetUrl!!)
+                                if (!result.success) {
+                                    downloadError = result.error
+                                    isDownloading = false
+                                }
+                                // 安装界面已弹出，不再关弹窗
+                            }
+                        },
+                        shape = RoundedCornerShape(50),
+                        enabled = !isDownloading
+                    ) {
+                        if (isDownloading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else Text("APP 内更新")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))) }
+                            catch (_: Exception) {}
+                            showUpdateDialog = false
+                        },
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text("前往下载")
+                    }
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showUpdateDialog = false },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray),
+                    enabled = !isDownloading
                 ) {
                     Text("稍后")
                 }
@@ -369,12 +406,12 @@ fun AdminScreen(
                             )
                             HorizontalDivider()
                             DropdownMenuItem(
-                                text = { Text("账号详情") },
+                                text = { Text("设置") },
                                 onClick = {
                                     showAccountMenu = false
                                     activeAccount?.let { onNavigateToAccountDetail(it.id) }
                                 },
-                                leadingIcon = { Icon(Icons.Default.Info, null) }
+                                leadingIcon = { Icon(Icons.Default.Settings, null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("更换账号") },
