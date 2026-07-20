@@ -20,8 +20,8 @@ android {
         applicationId = "com.bf1.admin.tool"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.3.0"
+        versionCode = 2
+        versionName = "1.3.1"
     }
 
     signingConfigs {
@@ -58,6 +58,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -81,4 +82,5 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.ui.tooling)
+    testImplementation(libs.junit)
 }

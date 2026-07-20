@@ -10,14 +10,23 @@ import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
+private const val TOKEN_TTL_MS = 2 * 60 * 60 * 1000L // 2 小时
+
+internal data class AccessTokenCache(
+    val remid: String,
+    val token: String,
+    val refreshedAt: Long
+) {
+    fun isReusableFor(requestRemid: String, now: Long): Boolean {
+        return remid == requestRemid && now - refreshedAt < TOKEN_TTL_MS
+    }
+}
+
 class EAApiService {
     companion object {
         private const val API_URL = "https://sparta-gw.battlelog.com/jsonrpc/pc/api"
         private const val CLIENT_VERSION = "release-bf1-lsu35_26385_ad7bf56a_tunguska_all_prod"
         private const val DB_ID = "Tunguska.Shipping2PC.Win32"
-
-        // AccessToken 有效期约 4 小时，提前 2 小时主动刷新（与 EAappEmulater 一致）
-        private const val TOKEN_TTL_MS = 2 * 60 * 60 * 1000L // 2 小时
     }
 
     /**
@@ -46,8 +55,7 @@ class EAApiService {
     // Token 缓存（进程内存，不持久化 — 重启后从 remid/sid 重新获取）
     // ═══════════════════════════════════════════════════
 
-    private var cachedAccessToken: String? = null
-    private var accessTokenRefreshTime: Long = 0L
+    private var accessTokenCache: AccessTokenCache? = null
 
     // sessionId 缓存关联到账号（remid 变化时自动失效）
     private var cachedSessionId: String? = null
@@ -138,7 +146,7 @@ class EAApiService {
             // sessionId 过期，重新获取
             // 先检查 AccessToken 缓存是否可用（省一次 GetToken）
             val cookieHeader = "remid=$remid; sid=$sid"
-            val accessToken = ensureAccessTokenInternal(cookieHeader)
+            val accessToken = ensureAccessTokenInternal(remid, cookieHeader)
             val authCode = getAuthCode(accessToken, cookieHeader)
             val sessionId = getSessionId(authCode)
 
@@ -162,15 +170,14 @@ class EAApiService {
     // AccessToken 缓存刷新
     // ═══════════════════════════════════════════════════
 
-    private suspend fun ensureAccessTokenInternal(cookieHeader: String): String {
-        if (cachedAccessToken != null &&
-            (System.currentTimeMillis() - accessTokenRefreshTime) < TOKEN_TTL_MS
-        ) {
-            return cachedAccessToken!!
+    private suspend fun ensureAccessTokenInternal(remid: String, cookieHeader: String): String {
+        val now = System.currentTimeMillis()
+        accessTokenCache?.takeIf { it.isReusableFor(remid, now) }?.let {
+            return it.token
         }
+
         val token = getAccessToken(cookieHeader)
-        cachedAccessToken = token
-        accessTokenRefreshTime = System.currentTimeMillis()
+        accessTokenCache = AccessTokenCache(remid, token, now)
         return token
     }
 
@@ -201,8 +208,7 @@ class EAApiService {
             // login_required → remid/sid 已彻底过期
             if (json.optString("error") == "login_required") {
                 // 清空所有缓存
-                cachedAccessToken = null
-                accessTokenRefreshTime = 0L
+                accessTokenCache = null
                 cachedSessionId = null
                 sessionIdRefreshTime = 0L
                 throw CredentialsExpiredException(
