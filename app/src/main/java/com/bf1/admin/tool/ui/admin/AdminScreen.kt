@@ -619,7 +619,6 @@ fun AdminScreen(
                         Text("1. 确保已登录 EA 账号并选择服务器", style = MaterialTheme.typography.bodySmall)
                         Text("2. 输入玩家名，多个用逗号或空格分隔", style = MaterialTheme.typography.bodySmall)
                         Text("3. 以 # 开头可直接输入 personaId/pid", style = MaterialTheme.typography.bodySmall)
-                        Text("作者:acdc", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
