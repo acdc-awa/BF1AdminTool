@@ -20,8 +20,9 @@ android {
         applicationId = "com.bf1.admin.tool"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
         versionName = "1.3.3"
+        val versionParts = versionName.split(".")
+        versionCode = 10000 * versionParts[0].toInt() + 100 * versionParts[1].toInt() + versionParts[2].toInt()
     }
 
     signingConfigs {
