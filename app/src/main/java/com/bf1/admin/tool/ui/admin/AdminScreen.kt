@@ -1,5 +1,7 @@
 package com.bf1.admin.tool.ui.admin
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,10 +15,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bf1.admin.tool.BuildConfig
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
+import com.bf1.admin.tool.util.UpdateChecker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +54,19 @@ fun AdminScreen(
     var showAdminDeleteDialog by remember { mutableStateOf(false) }
     var pendingDeleteAdmin by remember { mutableStateOf<com.bf1.admin.tool.data.remote.EAApiService.AdminInfo?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    // 首次加载时检查更新
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            UpdateChecker.checkForUpdate()
+        }?.let { info ->
+            updateInfo = info
+            showUpdateDialog = true
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.message.collect { snackbarHostState.showSnackbar(it) }
@@ -79,6 +100,57 @@ fun AdminScreen(
                     colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)
                 ) {
                     Text("取消")
+                }
+            }
+        )
+    }
+
+    // 更新提醒弹窗
+    if (showUpdateDialog && updateInfo != null) {
+        val info = updateInfo!!
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            icon = { Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary) },
+            title = {
+                Column {
+                    Text("发现新版本", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${info.latestVersion} → 当前 ${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Column {
+                    if (info.releaseNotes.isNotBlank()) {
+                        Text(
+                            info.releaseNotes.take(300),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
+                        } catch (_: Exception) {}
+                        showUpdateDialog = false
+                    },
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Text("前往下载")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showUpdateDialog = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)
+                ) {
+                    Text("稍后")
                 }
             }
         )
