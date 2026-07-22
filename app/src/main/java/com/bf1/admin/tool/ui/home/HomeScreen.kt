@@ -374,7 +374,9 @@ fun HomeScreen(
                                     val result = UpdateChecker.downloadAndInstall(
                                         context, bestUrl
                                     ) { progress -> downloadProgress = progress }
-                                    if (!result.success) {
+                                    if (result.success) {
+                                        showUpdateDialog = false
+                                    } else {
                                         downloadError = result.error
                                         isDownloading = false
                                     }
