@@ -12,8 +12,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bf1.admin.tool.BF1AdminApp
-import com.bf1.admin.tool.data.repository.AccountRepository
-import com.bf1.admin.tool.data.repository.AdminRepository
 import com.bf1.admin.tool.data.repository.ServerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,12 +24,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AddServerViewModel(application: Application) : AndroidViewModel(application) {
-    private val db = (application as BF1AdminApp).database
-    private val accountRepo = AccountRepository(db.accountDao(), application)
+    private val app = application as BF1AdminApp
+    private val db = app.database
+    private val accountRepo = app.accountRepository
     private val serverRepo = ServerRepository(db.serverDao())
-    private val adminRepo = AdminRepository(accountRepo)
-
-    private var cachedSessionId: String? = null
+    private val adminRepo = app.adminRepository
+    private val sessionManager = app.sessionManager
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -39,26 +37,50 @@ class AddServerViewModel(application: Application) : AndroidViewModel(applicatio
     private val _serverName = MutableStateFlow<String?>(null)
     val serverName: StateFlow<String?> = _serverName.asStateFlow()
 
+    private val _isLookingUp = MutableStateFlow(false)
+    val isLookingUp: StateFlow<Boolean> = _isLookingUp.asStateFlow()
+
+    private val _lookupError = MutableStateFlow<String?>(null)
+    val lookupError: StateFlow<String?> = _lookupError.asStateFlow()
+
     private val _message = MutableSharedFlow<String>()
     val message: SharedFlow<String> = _message.asSharedFlow()
 
-    private val _success = MutableSharedFlow<Unit>()
-    val success: SharedFlow<Unit> = _success.asSharedFlow()
+    private val _success = MutableSharedFlow<String>()
+    val success: SharedFlow<String> = _success.asSharedFlow()
+
+    private var lookupGeneration = 0L
 
     fun lookupServer(serverId: String) {
+        val generation = ++lookupGeneration
         if (serverId.length != 8) {
             _serverName.value = null
+            _lookupError.value = null
+            _isLookingUp.value = false
             return
         }
         viewModelScope.launch {
+            _isLookingUp.value = true
+            _serverName.value = null
+            _lookupError.value = null
             try {
-                val sessionId = ensureSession()
-                val (_, name) = withContext(Dispatchers.IO) {
-                    adminRepo.getServerDetails(sessionId, serverId)
+                val (_, name) = sessionManager.withActiveSession { sessionId ->
+                    withContext(Dispatchers.IO) {
+                        adminRepo.getServerDetails(sessionId, serverId)
+                    }
                 }
-                _serverName.value = name
-            } catch (_: Exception) {
-                _serverName.value = null
+                if (generation == lookupGeneration) {
+                    _serverName.value = name
+                }
+            } catch (e: Exception) {
+                if (generation == lookupGeneration) {
+                    _serverName.value = null
+                    _lookupError.value = e.message ?: "服务器查询失败，请稍后重试。"
+                }
+            } finally {
+                if (generation == lookupGeneration) {
+                    _isLookingUp.value = false
+                }
             }
         }
     }
@@ -70,8 +92,7 @@ class AddServerViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 val account = accountRepo.getActive() ?: throw Exception("请先登录 EA 账号")
                 serverRepo.addServer(serverId, name, account.personaId)
-                _message.emit("已添加服务器: $name")
-                _success.emit(Unit)
+                _success.emit(name)
             } catch (e: Exception) {
                 _message.emit("添加失败: ${e.message}")
             } finally {
@@ -80,34 +101,27 @@ class AddServerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private suspend fun ensureSession(): String {
-        cachedSessionId?.let { return it }
-        val encrypted = accountRepo.getActiveEncrypted()
-            ?: throw Exception("请先登录 EA 账号")
-        val session = withContext(Dispatchers.IO) {
-            adminRepo.authenticate(encrypted.remid, encrypted.sid).getOrThrow()
-        }
-        cachedSessionId = session.sessionId
-        return session.sessionId
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddServerScreen(
     onBack: () -> Unit,
+    onServerAdded: (String) -> Unit,
     viewModel: AddServerViewModel = viewModel()
 ) {
     var serverId by remember { mutableStateOf("") }
     val isLoading by viewModel.isLoading.collectAsState()
     val serverName by viewModel.serverName.collectAsState()
+    val isLookingUp by viewModel.isLookingUp.collectAsState()
+    val lookupError by viewModel.lookupError.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
         viewModel.message.collect { snackbarHostState.showSnackbar(it) }
     }
     LaunchedEffect(Unit) {
-        viewModel.success.collect { onBack() }
+        viewModel.success.collect { serverName -> onServerAdded(serverName) }
     }
     // 输入满 8 位自动查询服务器名称（参考 add_admin.py get_server_name）
     LaunchedEffect(serverId) {
@@ -145,28 +159,32 @@ fun AddServerScreen(
                 label = { Text("服务器 ID (8位数字)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                isError = serverId.length == 8 && serverName == null && serverId.isNotEmpty()
+                isError = lookupError != null
             )
 
-            // 显示查询到的服务器名称（前10字符）
             if (serverId.length == 8) {
-                if (serverName != null) {
-                    Card(
+                when {
+                    isLookingUp -> Text(
+                        text = "正在查询服务器信息...",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    serverName != null -> Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
                     ) {
                         Text(
-                            text = "服务器: ${serverName!!.take(10)}${if (serverName!!.length > 10) "..." else ""}",
+                            text = "服务器：$serverName",
                             modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.titleSmall
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 2
                         )
                     }
-                } else {
-                    Text(
-                        text = "正在查询服务器信息...",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lookupError != null -> Text(
+                        text = lookupError!!,
+                        color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -183,6 +201,12 @@ fun AddServerScreen(
                     Text("添加服务器")
                 }
             }
+
+            Text(
+                text = "说明：请填写服主所拥有的服务器 ServerID。非服主拥有的 ServerID 将无法查询。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

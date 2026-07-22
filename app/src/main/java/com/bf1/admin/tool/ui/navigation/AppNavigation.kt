@@ -1,6 +1,7 @@
 package com.bf1.admin.tool.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,15 +24,24 @@ object Routes {
     const val ACCOUNT_DETAIL = "account_detail/{accountId}"
 }
 
+private const val SERVER_ADDED_MESSAGE_KEY = "server_added_message"
+
 @Composable
 fun AppNavigation(navController: NavHostController) {
     NavHost(navController = navController, startDestination = Routes.HOME) {
-        composable(Routes.HOME) {
+        composable(Routes.HOME) { backStackEntry ->
+            val serverAddedMessage = backStackEntry.savedStateHandle
+                .getStateFlow<String?>(SERVER_ADDED_MESSAGE_KEY, null)
+                .collectAsState()
             AdminScreen(
                 onNavigateToLogin = { navController.navigate(Routes.LOGIN) },
                 onNavigateToAddServer = { navController.navigate(Routes.ADD_SERVER) },
                 onNavigateToAccountDetail = { accountId ->
                     navController.navigate("account_detail/$accountId")
+                },
+                serverAddedMessage = serverAddedMessage.value,
+                onServerAddedMessageShown = {
+                    backStackEntry.savedStateHandle[SERVER_ADDED_MESSAGE_KEY] = null
                 }
             )
         }
@@ -63,7 +73,16 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
         composable(Routes.ADD_SERVER) {
-            AddServerScreen(onBack = { navController.popBackStack() })
+            AddServerScreen(
+                onBack = { navController.popBackStack() },
+                onServerAdded = { serverName ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set(
+                        SERVER_ADDED_MESSAGE_KEY,
+                        "已添加服务器：$serverName"
+                    )
+                    navController.popBackStack()
+                }
+            )
         }
         composable(
             route = Routes.ACCOUNT_DETAIL,

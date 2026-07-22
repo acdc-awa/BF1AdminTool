@@ -5,8 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bf1.admin.tool.BF1AdminApp
 import com.bf1.admin.tool.data.local.entity.EncryptedAccount
-import com.bf1.admin.tool.data.repository.AccountRepository
-import com.bf1.admin.tool.data.repository.AdminRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,9 +16,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AccountDetailViewModel(application: Application) : AndroidViewModel(application) {
-    private val db = (application as BF1AdminApp).database
-    private val accountRepo = AccountRepository(db.accountDao(), application)
-    private val adminRepo = AdminRepository(accountRepo)
+    private val app = application as BF1AdminApp
+    private val accountRepo = app.accountRepository
+    private val adminRepo = app.adminRepository
+    private val sessionManager = app.sessionManager
 
     private val _account = MutableStateFlow<EncryptedAccount?>(null)
     val account: StateFlow<EncryptedAccount?> = _account.asStateFlow()
@@ -70,9 +69,10 @@ class AccountDetailViewModel(application: Application) : AndroidViewModel(applic
             try {
                 accountRepo.updateCredentials(accountId, _remid.value, _sid.value)
 
-                withContext(Dispatchers.IO) {
+                val session = withContext(Dispatchers.IO) {
                     adminRepo.authenticate(_remid.value, _sid.value).getOrThrow()
                 }
+                sessionManager.recordSession(accountId, _remid.value, session.sessionId)
                 _message.emit("保存成功，验证通过")
             } catch (e: Exception) {
                 _message.emit("验证失败，已保存但凭证可能已失效: ${e.message}")
