@@ -25,6 +25,7 @@ import com.bf1.admin.tool.util.UpdateChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /**
  * 主页容器：TopBar + 中间内容区（两个 tab） + BottomBar。
@@ -67,7 +68,9 @@ fun HomeScreen(
     var pendingDeleteAdmin by remember { mutableStateOf<EAApiService.AdminInfo?>(null) }
     var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var isSpeedTesting by remember { mutableStateOf(false) }
     var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0f) }
     var downloadError by remember { mutableStateOf<String?>(null) }
 
     // 首次加载检查更新
@@ -303,17 +306,22 @@ fun HomeScreen(
     if (showUpdateDialog && updateInfo != null) {
         val info = updateInfo!!
         val canInApp = info.apkAssetUrl != null
+        val isWorking = isSpeedTesting || isDownloading
 
         AlertDialog(
-            onDismissRequest = { if (!isDownloading) showUpdateDialog = false },
+            onDismissRequest = { if (!isWorking) showUpdateDialog = false },
             icon = {
-                if (isDownloading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                if (isWorking) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
             },
             title = {
                 Column {
                     Text(
-                        if (isDownloading) "正在下载..." else "发现新版本",
+                        when {
+                            isSpeedTesting -> "正在测速..."
+                            isDownloading -> "正在下载..."
+                            else -> "发现新版本"
+                        },
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(4.dp))
@@ -326,7 +334,19 @@ fun HomeScreen(
             },
             text = {
                 Column {
-                    if (isDownloading) {
+                    if (isDownloading && downloadProgress > 0f) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${(downloadProgress * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else if (isSpeedTesting) {
+                        Text("正在选择最快的下载节点...", style = MaterialTheme.typography.bodySmall)
+                    } else if (isDownloading) {
                         Text("正在下载更新包，请稍候...", style = MaterialTheme.typography.bodySmall)
                     } else if (downloadError != null) {
                         Text(
@@ -342,20 +362,33 @@ fun HomeScreen(
                 if (canInApp) {
                     Button(
                         onClick = {
-                            isDownloading = true
+                            isSpeedTesting = true
                             downloadError = null
                             coroutineScope.launch {
-                                val result = UpdateChecker.downloadAndInstall(context, info.apkAssetUrl!!)
-                                if (!result.success) {
-                                    downloadError = result.error
+                                try {
+                                    // 1. 测速选代理
+                                    val bestUrl = UpdateChecker.selectFastestProxyUrl(info.apkAssetUrl!!)
+                                    isSpeedTesting = false
+                                    isDownloading = true
+                                    // 2. 下载（带进度）
+                                    val result = UpdateChecker.downloadAndInstall(
+                                        context, bestUrl
+                                    ) { progress -> downloadProgress = progress }
+                                    if (!result.success) {
+                                        downloadError = result.error
+                                        isDownloading = false
+                                    }
+                                } catch (e: Exception) {
+                                    downloadError = e.message
+                                    isSpeedTesting = false
                                     isDownloading = false
                                 }
                             }
                         },
                         shape = RoundedCornerShape(50),
-                        enabled = !isDownloading
+                        enabled = !isWorking
                     ) {
-                        if (isDownloading) CircularProgressIndicator(
+                        if (isWorking) CircularProgressIndicator(
                             Modifier.size(18.dp), strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
@@ -378,7 +411,7 @@ fun HomeScreen(
                 TextButton(
                     onClick = { showUpdateDialog = false },
                     colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray),
-                    enabled = !isDownloading
+                    enabled = !isWorking
                 ) { Text("稍后") }
             }
         )
