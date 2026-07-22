@@ -68,7 +68,6 @@ fun HomeScreen(
     var pendingDeleteAdmin by remember { mutableStateOf<EAApiService.AdminInfo?>(null) }
     var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
-    var isSpeedTesting by remember { mutableStateOf(false) }
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf(0f) }
     var downloadError by remember { mutableStateOf<String?>(null) }
@@ -306,22 +305,16 @@ fun HomeScreen(
     if (showUpdateDialog && updateInfo != null) {
         val info = updateInfo!!
         val canInApp = info.apkAssetUrl != null
-        val isWorking = isSpeedTesting || isDownloading
-
         AlertDialog(
-            onDismissRequest = { if (!isWorking) showUpdateDialog = false },
+            onDismissRequest = { if (!isDownloading) showUpdateDialog = false },
             icon = {
-                if (isWorking) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                if (isDownloading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
             },
             title = {
                 Column {
                     Text(
-                        when {
-                            isSpeedTesting -> "正在测速..."
-                            isDownloading -> "正在下载..."
-                            else -> "发现新版本"
-                        },
+                        if (isDownloading) "正在下载..." else "发现新版本",
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(4.dp))
@@ -344,8 +337,6 @@ fun HomeScreen(
                             "${(downloadProgress * 100).roundToInt()}%",
                             style = MaterialTheme.typography.bodySmall
                         )
-                    } else if (isSpeedTesting) {
-                        Text("正在选择最快的下载节点...", style = MaterialTheme.typography.bodySmall)
                     } else if (isDownloading) {
                         Text("正在下载更新包，请稍候...", style = MaterialTheme.typography.bodySmall)
                     } else if (downloadError != null) {
@@ -362,15 +353,11 @@ fun HomeScreen(
                 if (canInApp) {
                     Button(
                         onClick = {
-                            isSpeedTesting = true
+                            isDownloading = true
                             downloadError = null
                             coroutineScope.launch {
                                 try {
-                                    // 1. 测速选代理
                                     val bestUrl = UpdateChecker.selectFastestProxyUrl(info.apkAssetUrl!!)
-                                    isSpeedTesting = false
-                                    isDownloading = true
-                                    // 2. 下载（带进度）
                                     val result = UpdateChecker.downloadAndInstall(
                                         context, bestUrl
                                     ) { progress -> downloadProgress = progress }
@@ -382,15 +369,14 @@ fun HomeScreen(
                                     }
                                 } catch (e: Exception) {
                                     downloadError = e.message
-                                    isSpeedTesting = false
                                     isDownloading = false
                                 }
                             }
                         },
                         shape = RoundedCornerShape(50),
-                        enabled = !isWorking
+                        enabled = !isDownloading
                     ) {
-                        if (isWorking) CircularProgressIndicator(
+                        if (isDownloading) CircularProgressIndicator(
                             Modifier.size(18.dp), strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
@@ -413,7 +399,7 @@ fun HomeScreen(
                 TextButton(
                     onClick = { showUpdateDialog = false },
                     colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray),
-                    enabled = !isWorking
+                    enabled = !isDownloading
                 ) { Text("稍后") }
             }
         )
