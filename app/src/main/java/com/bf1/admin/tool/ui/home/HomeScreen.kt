@@ -72,9 +72,13 @@ fun HomeScreen(
 
     // 首次加载检查更新
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }?.let { info ->
-            updateInfo = info
-            showUpdateDialog = true
+        try {
+            withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }?.let { info ->
+                updateInfo = info
+                showUpdateDialog = true
+            }
+        } catch (_: Exception) {
+            // 静默处理，用户可手动到设置页检查
         }
     }
 

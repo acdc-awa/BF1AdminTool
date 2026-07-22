@@ -382,13 +382,19 @@ fun SettingsTab(
                             onClick = {
                                 isCheckingUpdate = true
                                 coroutineScope.launch {
-                                    val result = withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }
-                                    updateCheckResult = result
-                                    isCheckingUpdate = false
-                                    if (result == null) {
-                                        snackbarHostState.showSnackbar("已是最新版本")
-                                    } else {
-                                        showUpdateDialog = true
+                                    try {
+                                        val result = withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }
+                                        updateCheckResult = result
+                                        if (result == null) {
+                                            snackbarHostState.showSnackbar("已是最新版本")
+                                        } else {
+                                            showUpdateDialog = true
+                                        }
+                                    } catch (e: Exception) {
+                                        // 失败时保留旧结果，不覆盖
+                                        snackbarHostState.showSnackbar("检查失败: ${e.message}")
+                                    } finally {
+                                        isCheckingUpdate = false
                                     }
                                 }
                             },
@@ -408,13 +414,18 @@ fun SettingsTab(
                         onClick = {
                             isCheckingUpdate = true
                             coroutineScope.launch {
-                                val result = withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }
-                                updateCheckResult = result
-                                isCheckingUpdate = false
-                                if (result == null) {
-                                    snackbarHostState.showSnackbar("已是最新版本")
-                                } else {
-                                    showUpdateDialog = true
+                                try {
+                                    val result = withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }
+                                    updateCheckResult = result
+                                    if (result == null) {
+                                        snackbarHostState.showSnackbar("已是最新版本")
+                                    } else {
+                                        showUpdateDialog = true
+                                    }
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar("检查失败: ${e.message}")
+                                } finally {
+                                    isCheckingUpdate = false
                                 }
                             }
                         },
