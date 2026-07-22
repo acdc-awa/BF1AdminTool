@@ -12,25 +12,20 @@ class AdminRepository(
     private var lastAuthSid: String = ""
 
     /**
-     * 获取有效的 sessionId，优先使用内部缓存（2h TTL）。
-     * 缓存未过期时零网络请求直接返回。
-     */
-    suspend fun ensureSessionId(accountId: Long, remid: String, sid: String): String {
-        lastAuthAccountId = accountId
-        lastAuthRemid = remid
-        lastAuthSid = sid
-        val sessionId = api.ensureSessionId(remid, sid)
-        // 消费 EA 服务器可能下发的 Cookie 更新
-        applyPendingCookieUpdates()
-        return sessionId
-    }
-
-    /**
      * 完整认证流程，返回 SessionInfo（含 persona 用于展示）。
      * 首次登录 / 手动验证时使用。
      */
     suspend fun authenticate(remid: String, sid: String): Result<EAApiService.SessionInfo> {
         return api.authenticate(remid, sid)
+    }
+
+    suspend fun refreshSessionId(accountId: Long, remid: String, sid: String): String {
+        lastAuthAccountId = accountId
+        lastAuthRemid = remid
+        lastAuthSid = sid
+        val sessionId = api.refreshSessionId(remid, sid)
+        applyPendingCookieUpdates()
+        return sessionId
     }
 
     private suspend fun applyPendingCookieUpdates() {

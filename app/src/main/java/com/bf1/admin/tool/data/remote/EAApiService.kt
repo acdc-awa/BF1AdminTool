@@ -10,18 +10,6 @@ import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-private const val TOKEN_TTL_MS = 2 * 60 * 60 * 1000L // 2 小时
-
-internal data class AccessTokenCache(
-    val remid: String,
-    val token: String,
-    val refreshedAt: Long
-) {
-    fun isReusableFor(requestRemid: String, now: Long): Boolean {
-        return remid == requestRemid && now - refreshedAt < TOKEN_TTL_MS
-    }
-}
-
 class EAApiService {
     companion object {
         private const val API_URL = "https://sparta-gw.battlelog.com/jsonrpc/pc/api"
@@ -44,18 +32,7 @@ class EAApiService {
         .followSslRedirects(false)
         .build()
 
-    // ═══════════════════════════════════════════════════
-    // Token 缓存（进程内存，不持久化 — 重启后从 remid/sid 重新获取）
-    // ═══════════════════════════════════════════════════
-
-    private var accessTokenCache: AccessTokenCache? = null
-
-    // sessionId 缓存关联到账号（remid 变化时自动失效）
-    private var cachedSessionId: String? = null
-    private var cachedSessionRemid: String = ""
-    private var sessionIdRefreshTime: Long = 0L
-
-    /// Mutex 防止多个协程同时触发刷新
+    // Mutex 防止多个协程同时触发完整兑换流程。
     private val refreshMutex = Mutex()
 
     // ═══════════════════════════════════════════════════
@@ -113,56 +90,11 @@ class EAApiService {
         SessionInfo(sessionId, persona)
     }
 
-    /**
-     * 获取有效的 sessionId，优先使用缓存。
-     * 缓存未过期时零网络请求直接返回；过期则自动用 remid/sid 完整走一遍
-     * access_token → auth_code → sessionId 流程。
-     *
-     * 用于所有 Battlelog JSON-RPC 操作（管理员管理、服务器查询等）。
-     *
-     * 注意：切换账号（remid 变化）时缓存自动失效。
-     */
-    suspend fun ensureSessionId(remid: String, sid: String): String {
-        return refreshMutex.withLock {
-            // 切换账号 → 缓存失效
-            if (cachedSessionRemid != remid) {
-                cachedSessionId = null
-                sessionIdRefreshTime = 0L
-            }
-
-            if (cachedSessionId != null &&
-                (System.currentTimeMillis() - sessionIdRefreshTime) < TOKEN_TTL_MS
-            ) {
-                return cachedSessionId!!
-            }
-
-            // sessionId 过期，重新获取
-            // 先检查 AccessToken 缓存是否可用（省一次 GetToken）
-            val cookieHeader = "remid=$remid; sid=$sid"
-            val accessToken = ensureAccessTokenInternal(remid, cookieHeader)
-            val authCode = getAuthCode(accessToken, cookieHeader)
-            val sessionId = getSessionId(authCode)
-
-            cachedSessionId = sessionId
-            cachedSessionRemid = remid
-            sessionIdRefreshTime = System.currentTimeMillis()
-            sessionId
-        }
-    }
-
-    // ═══════════════════════════════════════════════════
-    // AccessToken 缓存刷新
-    // ═══════════════════════════════════════════════════
-
-    private suspend fun ensureAccessTokenInternal(remid: String, cookieHeader: String): String {
-        val now = System.currentTimeMillis()
-        accessTokenCache?.takeIf { it.isReusableFor(remid, now) }?.let {
-            return it.token
-        }
-
-        val token = getAccessToken(cookieHeader)
-        accessTokenCache = AccessTokenCache(remid, token, now)
-        return token
+    suspend fun refreshSessionId(remid: String, sid: String): String = refreshMutex.withLock {
+        val cookieHeader = "remid=$remid; sid=$sid"
+        val accessToken = getAccessToken(cookieHeader)
+        val authCode = getAuthCode(accessToken, cookieHeader)
+        getSessionId(authCode)
     }
 
     // ═══════════════════════════════════════════════════
@@ -191,10 +123,6 @@ class EAApiService {
 
             // login_required → remid/sid 已彻底过期
             if (json.optString("error") == "login_required") {
-                // 清空所有缓存
-                accessTokenCache = null
-                cachedSessionId = null
-                sessionIdRefreshTime = 0L
                 throw CredentialsExpiredException(
                     "remid/sid 已过期 (${json.optString("error_code", "")}): " +
                     json.optString("error", body)
@@ -329,6 +257,9 @@ class EAApiService {
             .build()
 
         client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw ServerLookupException(response.code)
+            }
             val respBody = response.body?.string()
                 ?: throw Exception("Empty response getting server details")
             val json = JSONObject(respBody)
