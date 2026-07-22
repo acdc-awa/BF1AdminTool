@@ -20,7 +20,7 @@ android {
         applicationId = "com.bf1.admin.tool"
         minSdk = 26
         targetSdk = 35
-        versionName = "1.4.0"
+        versionName = "1.5.0"
         val versionParts = versionName?.split(".")
         versionCode = 10000 * versionParts?.get(0)!!.toInt() + 100 * versionParts[1].toInt() + versionParts[2].toInt()
     }
@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.material)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
