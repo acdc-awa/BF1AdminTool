@@ -79,7 +79,7 @@ class BattlelogSessionManager(
         val sessionId = adminRepository.refreshSessionId(account.id, account.remid, account.sid)
         val refreshedAccount = accountRepository.getDecryptedById(account.id) ?: account
         saveSession(account.id, refreshedAccount.remid, sessionId)
-        sessionId
+        return sessionId
     }
 
     private suspend fun saveSession(accountId: Long, remid: String, sessionId: String) {
