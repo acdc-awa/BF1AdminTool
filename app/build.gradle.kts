@@ -20,7 +20,7 @@ android {
         applicationId = "com.bf1.admin.tool"
         minSdk = 26
         targetSdk = 35
-        versionName = "1.5.0"
+        versionName = "1.5.1"
         val versionParts = versionName?.split(".")
         versionCode = 10000 * versionParts?.get(0)!!.toInt() + 100 * versionParts[1].toInt() + versionParts[2].toInt()
     }
