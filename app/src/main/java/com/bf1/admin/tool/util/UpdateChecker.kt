@@ -23,6 +23,9 @@ object UpdateChecker {
     private const val GITHUB_API =
         "https://api.github.com/repos/acdc-awa/BF1AdminTool/releases/latest"
 
+    /** GitHub 下载加速代理前缀 */
+    private const val PROXY_PREFIX = "https://gh-proxy.org/"
+
     data class UpdateInfo(
         val latestVersion: String,
         val releaseName: String,
@@ -49,54 +52,54 @@ object UpdateChecker {
 
     /**
      * 检查 GitHub 是否有新版本。
-     * 返回 [UpdateInfo] 表示有新版本，null 表示已是最新或出错。
+     * @return [UpdateInfo] 有新版本，null 已是最新，[[Exception]] 网络/API 错误。
      */
+    @Throws(Exception::class)
     suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url(GITHUB_API)
-                .header("Accept", "application/vnd.github.v3+json")
-                .build()
+        val request = Request.Builder()
+            .url(GITHUB_API)
+            .header("Accept", "application/vnd.github.v3+json")
+            .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.w(TAG, "GitHub API returned ${response.code}")
-                return@withContext null
-            }
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw Exception("GitHub API 返回 HTTP ${response.code}")
+        }
 
-            val body = response.body?.string() ?: return@withContext null
-            val json = JSONObject(body)
+        val body = response.body?.string()
+            ?: throw Exception("GitHub API 响应体为空")
 
-            val tagName = json.optString("tag_name", "")
-            if (tagName.isEmpty()) return@withContext null
+        val json = JSONObject(body)
 
-            if (!isNewer(tagName, BuildConfig.VERSION_NAME)) return@withContext null
+        val tagName = json.optString("tag_name", "")
+        if (tagName.isEmpty()) {
+            throw Exception("GitHub API 未返回 tag_name")
+        }
 
-            // 查找 .apk 资产
-            val assets = json.optJSONArray("assets")
-            var apkUrl: String? = null
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    if (name.endsWith(".apk")) {
-                        apkUrl = asset.optString("browser_download_url", "")
-                        break
-                    }
+        if (!isNewer(tagName, BuildConfig.VERSION_NAME)) return@withContext null
+
+        // 查找 .apk 资产
+        val assets = json.optJSONArray("assets")
+        var apkUrl: String? = null
+        if (assets != null) {
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.optString("name", "")
+                if (name.endsWith(".apk")) {
+                    val raw = asset.optString("browser_download_url", "")
+                    apkUrl = if (raw.isNotEmpty()) PROXY_PREFIX + raw else raw
+                    break
                 }
             }
-
-            UpdateInfo(
-                latestVersion = tagName,
-                releaseName = json.optString("name", tagName),
-                releaseNotes = json.optString("body", ""),
-                downloadUrl = json.optString("html_url", ""),
-                apkAssetUrl = apkUrl
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "Check for update failed", e)
-            null
         }
+
+        UpdateInfo(
+            latestVersion = tagName,
+            releaseName = json.optString("name", tagName),
+            releaseNotes = json.optString("body", ""),
+            downloadUrl = json.optString("html_url", ""),
+            apkAssetUrl = apkUrl
+        )
     }
 
     /**
