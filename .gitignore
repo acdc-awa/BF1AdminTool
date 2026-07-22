@@ -21,3 +21,5 @@ app/release/
 
 # Claude Code
 .claude/
+.codex/
+.agent/
