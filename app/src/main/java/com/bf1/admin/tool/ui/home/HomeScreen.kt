@@ -11,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +42,6 @@ fun HomeScreen(
     val activeServer by viewModel.activeServer.collectAsState()
     val adminList by viewModel.adminList.collectAsState()
     val isRefreshingAdminList by viewModel.isRefreshingAdminList.collectAsState()
-    val welcomeMessage by viewModel.welcomeMessage.collectAsState()
     val expiredAccount by viewModel.expiredAccount.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val decryptedCredentials by viewModel.decryptedCredentials.collectAsState()
@@ -440,27 +438,16 @@ fun HomeScreen(
             1 -> SettingsTab(
                 modifier = Modifier.padding(padding),
                 activeAccount = activeAccount,
-                accounts = accounts,
                 decryptedCredentials = decryptedCredentials,
                 servers = servers,
                 isLoading = isLoading,
                 lookupServerName = lookupServerName,
                 isLookingUpServer = isLookingUpServer,
                 lookupError = lookupError,
-                showAccountSwitcher = showAccountSwitcher,
                 onShowAccountSwitcher = { showAccountSwitcher = it },
-                showAccountDeleteDialog = showAccountDeleteDialog,
-                pendingDeleteAccount = pendingDeleteAccount,
-                onShowAccountDeleteDialog = { showAccountDeleteDialog = it },
-                onPendingDeleteAccount = { pendingDeleteAccount = it },
-                showServerDeleteDialog = showServerDeleteDialog,
-                pendingDeleteServer = pendingDeleteServer,
                 onShowServerDeleteDialog = { showServerDeleteDialog = it },
                 onPendingDeleteServer = { pendingDeleteServer = it },
                 onNavigateToLogin = onNavigateToLogin,
-                onSwitchAccount = { viewModel.switchAccount(it) },
-                onDeleteAccount = { viewModel.deleteAccount(it) },
-                onDeleteServer = { viewModel.deleteServer(it) },
                 onSaveCredentials = { remid, sid -> viewModel.saveCredentials(remid, sid) },
                 onLookupServer = { viewModel.lookupServer(it) },
                 onAddServer = { serverId, onSuccess ->

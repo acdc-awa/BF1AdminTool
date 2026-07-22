@@ -40,9 +40,6 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _welcomeMessage = MutableStateFlow<String?>(null)
-    val welcomeMessage: StateFlow<String?> = _welcomeMessage.asStateFlow()
-
     private val _expiredAccount = MutableStateFlow<AccountEntity?>(null)
     val expiredAccount: StateFlow<AccountEntity?> = _expiredAccount.asStateFlow()
 
@@ -94,7 +91,6 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             accountRepo.switchActive(account.id)
             _activeAccount.value = account
             _activeServer.value = serverRepo.getActiveByOwner(account.personaId)
-            _welcomeMessage.value = null
             initSession(account)
             loadAdminList()
             loadDecryptedCredentials()
@@ -134,28 +130,6 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 val account = _activeAccount.value ?: return@launch
                 _activeServer.value = serverRepo.getActiveByOwner(account.personaId)
                 loadAdminList()
-            }
-        }
-    }
-
-    fun addServer(serverId: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val (id, name) = withSessionRetry { sessionId ->
-                    withContext(Dispatchers.IO) {
-                        adminRepo.getServerDetails(sessionId, serverId)
-                    }
-                }
-                val account = _activeAccount.value ?: return@launch
-                val newId = serverRepo.addServer(id, name, account.personaId)
-                serverRepo.switchActive(account.personaId, newId)
-                _activeServer.value = ServerEntity(newId, id, name, account.personaId, true)
-                _message.emit("已添加服务器: $name")
-            } catch (e: Exception) {
-                _message.emit("添加服务器失败: ${e.message}")
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -245,7 +219,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ── 凭证编辑 ──
-    fun loadDecryptedCredentials() {
+    private fun loadDecryptedCredentials() {
         viewModelScope.launch {
             val account = _activeAccount.value ?: return@launch
             try {
@@ -347,17 +321,11 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun initSession(account: AccountEntity) {
         try {
-            val sessionId = withContext(Dispatchers.IO) { sessionManager.getActiveSessionId() }
-
-            val welcome = withContext(Dispatchers.IO) {
-                adminRepo.getWelcomeMessage(sessionId)
-            }
-            _welcomeMessage.value = welcome
+            // 仅验证 session 有效性
+            withContext(Dispatchers.IO) { sessionManager.getActiveSessionId() }
         } catch (e: EAApiService.CredentialsExpiredException) {
-            _welcomeMessage.value = null
             _expiredAccount.value = account
         } catch (e: Exception) {
-            _welcomeMessage.value = null
             // 网络等瞬态错误静默处理，下次操作时 withSessionRetry 会自动重试
         }
     }
