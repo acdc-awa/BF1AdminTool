@@ -18,6 +18,7 @@ build/
 # Local
 local.properties
 app/release/
+.references/
 
 # Claude Code
 .claude/
