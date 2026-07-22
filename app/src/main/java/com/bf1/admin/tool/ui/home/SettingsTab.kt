@@ -35,33 +35,21 @@ import kotlinx.coroutines.withContext
 fun SettingsTab(
     modifier: Modifier = Modifier,
     activeAccount: AccountEntity?,
-    accounts: List<AccountEntity>,
     decryptedCredentials: AdminViewModel.DecryptedCredentials?,
     servers: List<ServerEntity>,
     isLoading: Boolean,
     lookupServerName: String?,
     isLookingUpServer: Boolean,
     lookupError: String?,
-    showAccountSwitcher: Boolean,
     onShowAccountSwitcher: (Boolean) -> Unit,
-    showAccountDeleteDialog: Boolean,
-    pendingDeleteAccount: AccountEntity?,
-    onShowAccountDeleteDialog: (Boolean) -> Unit,
-    onPendingDeleteAccount: (AccountEntity?) -> Unit,
-    showServerDeleteDialog: Boolean,
-    pendingDeleteServer: ServerEntity?,
     onShowServerDeleteDialog: (Boolean) -> Unit,
     onPendingDeleteServer: (ServerEntity?) -> Unit,
     onNavigateToLogin: () -> Unit,
-    onSwitchAccount: (AccountEntity) -> Unit,
-    onDeleteAccount: (AccountEntity) -> Unit,
-    onDeleteServer: (ServerEntity) -> Unit,
     onSaveCredentials: (String, String) -> Unit,
     onLookupServer: (String) -> Unit,
     onAddServer: (String, () -> Unit) -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
