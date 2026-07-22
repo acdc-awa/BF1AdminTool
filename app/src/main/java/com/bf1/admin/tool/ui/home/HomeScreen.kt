@@ -326,7 +326,7 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${info.latestVersion} → 当前 ${BuildConfig.VERSION_NAME}",
+                        "当前 v${BuildConfig.VERSION_NAME} → ${info.latestVersion}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
