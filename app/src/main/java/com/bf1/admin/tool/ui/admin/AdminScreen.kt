@@ -33,6 +33,8 @@ fun AdminScreen(
     onNavigateToLogin: () -> Unit,
     onNavigateToAddServer: () -> Unit,
     onNavigateToAccountDetail: (Long) -> Unit = {},
+    serverAddedMessage: String? = null,
+    onServerAddedMessageShown: () -> Unit = {},
     viewModel: AdminViewModel = viewModel()
 ) {
     val accounts by viewModel.accounts.collectAsState()
@@ -72,6 +74,13 @@ fun AdminScreen(
 
     LaunchedEffect(Unit) {
         viewModel.message.collect { snackbarHostState.showSnackbar(it) }
+    }
+
+    LaunchedEffect(serverAddedMessage) {
+        serverAddedMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            onServerAddedMessageShown()
+        }
     }
 
     // Delete confirmation dialogs

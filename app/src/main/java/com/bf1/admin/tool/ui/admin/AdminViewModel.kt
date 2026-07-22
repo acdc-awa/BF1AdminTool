@@ -7,8 +7,6 @@ import com.bf1.admin.tool.BF1AdminApp
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.remote.EAApiService
-import com.bf1.admin.tool.data.repository.AccountRepository
-import com.bf1.admin.tool.data.repository.AdminRepository
 import com.bf1.admin.tool.data.repository.ServerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -16,10 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AdminViewModel(application: Application) : AndroidViewModel(application) {
-    private val db = (application as BF1AdminApp).database
-    private val accountRepo = AccountRepository(db.accountDao(), application)
+    private val app = application as BF1AdminApp
+    private val db = app.database
+    private val accountRepo = app.accountRepository
     private val serverRepo = ServerRepository(db.serverDao())
-    private val adminRepo = AdminRepository(accountRepo)
+    private val adminRepo = app.adminRepository
+    private val sessionManager = app.sessionManager
 
     val accounts: StateFlow<List<AccountEntity>> = accountRepo.allAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -223,20 +223,16 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ═══════════════════════════════════════════════════
-    // Session 管理（内部缓存由 EAApiService 处理）
+    // Session 管理由 BattlelogSessionManager 统一处理。
     // ═══════════════════════════════════════════════════
 
     /**
      * 初始化 / 切换账号时验证凭证并获取 session。
-     * 内部缓存由 EAApiService 管理（2h TTL），这里仅触发一次确保有效性。
+     * 统一缓存由 BattlelogSessionManager 管理，这里仅触发一次确保有效性。
      */
     private suspend fun initSession(account: AccountEntity) {
         try {
-            val encrypted = accountRepo.getActiveEncrypted() ?: return
-
-            val sessionId = withContext(Dispatchers.IO) {
-                adminRepo.ensureSessionId(account.id, encrypted.remid, encrypted.sid)
-            }
+            val sessionId = withContext(Dispatchers.IO) { sessionManager.getActiveSessionId() }
 
             val welcome = withContext(Dispatchers.IO) {
                 adminRepo.getWelcomeMessage(sessionId)
@@ -252,55 +248,17 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 获取有效的 sessionId。
-     * 内部缓存由 EAApiService 管理（2h TTL，Mutex 防并发刷新）。
-     */
-    private suspend fun getSessionId(): String {
-        val encrypted = accountRepo.getActiveEncrypted()
-            ?: throw Exception("请先登录 EA 账号")
-        val account = _activeAccount.value
-            ?: throw Exception("没有活跃账号")
-        return withContext(Dispatchers.IO) {
-            adminRepo.ensureSessionId(account.id, encrypted.remid, encrypted.sid)
-        }
-    }
-
-    /**
      * 带 session 过期自动重试的 API 调用包装。
      *
-     * 因为 EAApiService 内部已经有 2h TTL 缓存 + Mutex 保护，
-     * 这里的重试主要处理 sessionId 被 EA 服务端提前失效的边界情况。
-     *
-     * - API 返回 session/auth 错误 → 清除缓存，强制刷新 sessionId 后重试
-     * - remid/sid 也过期 → 标记账户过期，通知用户重新登录
+     * 统一管理器会在 session/auth 错误时清除持久化缓存并完成一次重新兑换。
+     * remid/sid 过期时标记账户过期，通知用户重新登录。
      */
     private suspend fun <T> withSessionRetry(block: suspend (sessionId: String) -> T): T {
-        if (_expiredAccount.value != null) {
-            throw EAApiService.CredentialsExpiredException("凭证已过期，请重新登录")
-        }
         try {
-            val sessionId = getSessionId()
-            return block(sessionId)
+            return sessionManager.withActiveSession(block)
         } catch (ce: EAApiService.CredentialsExpiredException) {
             _expiredAccount.value = _activeAccount.value
             throw ce
-        } catch (e: Exception) {
-            val msg = e.message?.lowercase() ?: ""
-            if (msg.contains("session") || msg.contains("auth") ||
-                msg.contains("401") || msg.contains("403")
-            ) {
-                // 清除 ViewModel 级缓存，强制下一次 getSessionId 走完整流程
-                // （EAApiService 内部的 sessionId 缓存已过期或即将过期）
-                try {
-                    val newSessionId = getSessionId()
-                    return block(newSessionId)
-                } catch (ce: EAApiService.CredentialsExpiredException) {
-                    _expiredAccount.value = _activeAccount.value
-                    throw ce
-                }
-            } else {
-                throw e
-            }
         }
     }
 }
