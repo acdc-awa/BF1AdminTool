@@ -56,6 +56,26 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRefreshingAdminList = MutableStateFlow(false)
     val isRefreshingAdminList: StateFlow<Boolean> = _isRefreshingAdminList.asStateFlow()
 
+    // ── 凭证编辑 ──
+    data class DecryptedCredentials(val remid: String, val sid: String)
+
+    private val _decryptedCredentials = MutableStateFlow<DecryptedCredentials?>(null)
+    val decryptedCredentials: StateFlow<DecryptedCredentials?> = _decryptedCredentials.asStateFlow()
+
+    private var isSaving = false
+
+    // ── 服务器查询（用于设置页添加服务器弹窗）──
+    private val _lookupServerName = MutableStateFlow<String?>(null)
+    val lookupServerName: StateFlow<String?> = _lookupServerName.asStateFlow()
+
+    private val _isLookingUpServer = MutableStateFlow(false)
+    val isLookingUpServer: StateFlow<Boolean> = _isLookingUpServer.asStateFlow()
+
+    private val _lookupError = MutableStateFlow<String?>(null)
+    val lookupError: StateFlow<String?> = _lookupError.asStateFlow()
+
+    private var lookupGeneration = 0L
+
     init {
         viewModelScope.launch {
             val account = accountRepo.getActive()
@@ -64,6 +84,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 _activeServer.value = serverRepo.getActiveByOwner(account.personaId)
                 initSession(account)
                 loadAdminList()
+                loadDecryptedCredentials()
             }
         }
     }
@@ -76,6 +97,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             _welcomeMessage.value = null
             initSession(account)
             loadAdminList()
+            loadDecryptedCredentials()
         }
     }
 
@@ -218,6 +240,99 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 _message.emit("获取管理员列表失败: ${e.message}")
             } finally {
                 _isRefreshingAdminList.value = false
+            }
+        }
+    }
+
+    // ── 凭证编辑 ──
+    fun loadDecryptedCredentials() {
+        viewModelScope.launch {
+            val account = _activeAccount.value ?: return@launch
+            try {
+                val enc = accountRepo.getDecryptedById(account.id)
+                _decryptedCredentials.value = enc?.let {
+                    DecryptedCredentials(remid = it.remid, sid = it.sid)
+                }
+            } catch (e: Exception) {
+                _message.emit("加载凭证失败: ${e.message}")
+            }
+        }
+    }
+
+    fun saveCredentials(remid: String, sid: String) {
+        if (isSaving) return
+        viewModelScope.launch {
+            isSaving = true
+            try {
+                val account = _activeAccount.value ?: throw Exception("无活跃账号")
+                accountRepo.updateCredentials(account.id, remid, sid)
+                val session = withContext(Dispatchers.IO) {
+                    adminRepo.authenticate(remid, sid).getOrThrow()
+                }
+                sessionManager.recordSession(account.id, remid, session.sessionId)
+                _message.emit("保存成功，验证通过")
+            } catch (e: Exception) {
+                _message.emit("验证失败，已保存但凭证可能已失效: ${e.message}")
+            } finally {
+                isSaving = false
+            }
+        }
+    }
+
+    // ── 服务器查询（用于设置页添加服务器弹窗）──
+    fun lookupServer(serverId: String) {
+        val generation = ++lookupGeneration
+        if (serverId.length != 8) {
+            _lookupServerName.value = null
+            _lookupError.value = null
+            _isLookingUpServer.value = false
+            return
+        }
+        viewModelScope.launch {
+            _isLookingUpServer.value = true
+            _lookupServerName.value = null
+            _lookupError.value = null
+            try {
+                val (_, name) = sessionManager.withActiveSession { sessionId ->
+                    withContext(Dispatchers.IO) {
+                        adminRepo.getServerDetails(sessionId, serverId)
+                    }
+                }
+                if (generation == lookupGeneration) {
+                    _lookupServerName.value = name
+                }
+            } catch (e: Exception) {
+                if (generation == lookupGeneration) {
+                    _lookupServerName.value = null
+                    _lookupError.value = e.message ?: "服务器查询失败，请稍后重试。"
+                }
+            } finally {
+                if (generation == lookupGeneration) {
+                    _isLookingUpServer.value = false
+                }
+            }
+        }
+    }
+
+    fun addServerFromSettings(serverId: String, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val (id, name) = sessionManager.withActiveSession { sessionId ->
+                    withContext(Dispatchers.IO) {
+                        adminRepo.getServerDetails(sessionId, serverId)
+                    }
+                }
+                val account = _activeAccount.value ?: return@launch
+                val newId = serverRepo.addServer(id, name, account.personaId)
+                serverRepo.switchActive(account.personaId, newId)
+                _activeServer.value = ServerEntity(newId, id, name, account.personaId, true)
+                _message.emit("已添加服务器: $name")
+                onSuccess()
+            } catch (e: Exception) {
+                _message.emit("添加服务器失败: ${e.message}")
+            } finally {
+                _isLoading.value = false
             }
         }
     }
