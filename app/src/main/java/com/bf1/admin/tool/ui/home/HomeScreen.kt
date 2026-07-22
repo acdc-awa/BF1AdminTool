@@ -380,7 +380,7 @@ fun HomeScreen(
                             Modifier.size(18.dp), strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
-                        else Text("APP 内更新")
+                        else Text("更新")
                     }
                 } else {
                     Button(
