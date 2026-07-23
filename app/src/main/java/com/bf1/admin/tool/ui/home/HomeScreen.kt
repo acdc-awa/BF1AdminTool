@@ -1,7 +1,5 @@
 package com.bf1.admin.tool.ui.home
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,20 +10,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.bf1.admin.tool.BuildConfig
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.remote.EAApiService
 import com.bf1.admin.tool.ui.admin.AdminViewModel
+import com.bf1.admin.tool.ui.common.UpdateDialog
 import com.bf1.admin.tool.util.UpdateChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
 /**
  * 主页容器：TopBar + 中间内容区（两个 tab） + BottomBar。
@@ -52,8 +47,6 @@ fun HomeScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
 
     // 玩家输入（AdminTab 共享）
     var playerInput by remember { mutableStateOf("") }
@@ -68,9 +61,6 @@ fun HomeScreen(
     var pendingDeleteAdmin by remember { mutableStateOf<EAApiService.AdminInfo?>(null) }
     var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
-    var isDownloading by remember { mutableStateOf(false) }
-    var downloadProgress by remember { mutableStateOf(0f) }
-    var downloadError by remember { mutableStateOf<String?>(null) }
 
     // 首次加载检查更新
     LaunchedEffect(Unit) {
@@ -303,105 +293,9 @@ fun HomeScreen(
 
     // 更新提醒弹窗
     if (showUpdateDialog && updateInfo != null) {
-        val info = updateInfo!!
-        val canInApp = info.apkAssetUrl != null
-        AlertDialog(
-            onDismissRequest = { if (!isDownloading) showUpdateDialog = false },
-            icon = {
-                if (isDownloading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
-            },
-            title = {
-                Column {
-                    Text(
-                        if (isDownloading) "正在下载..." else "发现新版本",
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "当前 v${BuildConfig.VERSION_NAME} → ${info.latestVersion}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            text = {
-                Column {
-                    if (isDownloading && downloadProgress > 0f) {
-                        LinearProgressIndicator(
-                            progress = { downloadProgress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "${(downloadProgress * 100).roundToInt()}%",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    } else if (isDownloading) {
-                        Text("正在下载更新包，请稍候...", style = MaterialTheme.typography.bodySmall)
-                    } else if (downloadError != null) {
-                        Text(
-                            downloadError!!, color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    } else if (info.releaseNotes.isNotBlank()) {
-                        Text(info.releaseNotes.take(300), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            },
-            confirmButton = {
-                if (canInApp) {
-                    Button(
-                        onClick = {
-                            isDownloading = true
-                            downloadError = null
-                            coroutineScope.launch {
-                                try {
-                                    val bestUrl = UpdateChecker.selectFastestProxyUrl(info.apkAssetUrl!!)
-                                    val result = UpdateChecker.downloadAndInstall(
-                                        context, bestUrl
-                                    ) { progress -> downloadProgress = progress }
-                                    if (result.success) {
-                                        showUpdateDialog = false
-                                    } else {
-                                        downloadError = result.error
-                                        isDownloading = false
-                                    }
-                                } catch (e: Exception) {
-                                    downloadError = e.message
-                                    isDownloading = false
-                                }
-                            }
-                        },
-                        shape = RoundedCornerShape(50),
-                        enabled = !isDownloading
-                    ) {
-                        if (isDownloading) CircularProgressIndicator(
-                            Modifier.size(18.dp), strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                        else Text("更新")
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
-                            } catch (_: Exception) {
-                            }
-                            showUpdateDialog = false
-                        },
-                        shape = RoundedCornerShape(50)
-                    ) { Text("前往下载") }
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showUpdateDialog = false },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray),
-                    enabled = !isDownloading
-                ) { Text("稍后") }
-            }
+        UpdateDialog(
+            updateInfo = updateInfo!!,
+            onDismiss = { showUpdateDialog = false }
         )
     }
 

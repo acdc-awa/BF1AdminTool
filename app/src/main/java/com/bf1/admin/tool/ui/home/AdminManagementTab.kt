@@ -368,11 +368,12 @@ private fun AdminActionBar(
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = playerInput,
-                onValueChange = onInputChange,
+                onValueChange = { onInputChange(it.replace("\n", "")) },
                 label = { Text("搜索或输入玩家名") },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 4
+                singleLine = false,
+                minLines = 1,
+                maxLines = 3
             )
         }
     }
