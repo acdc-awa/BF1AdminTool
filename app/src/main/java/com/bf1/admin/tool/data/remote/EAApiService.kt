@@ -17,14 +17,6 @@ class EAApiService {
         private const val DB_ID = "Tunguska.Shipping2PC.Win32"
     }
 
-    /**
-     * 未消费的 Cookie 更新。
-     * getAccessToken / getAuthCode 的响应中如果检测到新 remid/sid，会写入这里。
-     * 调用方（AdminRepository）在每次 ensureSessionId 后消费并持久化到 DB。
-     */
-    @Volatile var pendingNewRemid: String? = null
-    @Volatile var pendingNewSid: String? = null
-
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -40,7 +32,12 @@ class EAApiService {
     // ═══════════════════════════════════════════════════
 
     data class PersonaInfo(val displayName: String, val personaId: String)
-    data class SessionInfo(val sessionId: String, val persona: PersonaInfo)
+    data class SessionInfo(
+        val sessionId: String,
+        val persona: PersonaInfo,
+        val rotated: RotatedCookies
+    )
+    data class RefreshResult(val sessionId: String, val rotated: RotatedCookies)
     data class AdminInfo(val personaId: String, val displayName: String, val avatar: String)
 
     /**
@@ -52,24 +49,18 @@ class EAApiService {
     // 被动 Cookie 更新（对应 EAappEmulater 的 UpdateCookie）
     // ═══════════════════════════════════════════════════
 
-    private fun updateCookiesFromResponse(response: okhttp3.Response) {
-        val setCookieHeaders = response.headers("Set-Cookie")
-        var newRemid: String? = null
-        var newSid: String? = null
+    /**
+     * 单次认证流程内累积 Set-Cookie。
+     *
+     * 刻意做成按次创建的局部对象而非 service 上的共享字段：轮换结果必须与产生它的
+     * 那次调用绑定，否则会被写到别的账号头上。
+     */
+    private class CookieCollector {
+        var rotated: RotatedCookies = RotatedCookies()
+            private set
 
-        for (header in setCookieHeaders) {
-            val cookie = header.split(";").first().trim()
-            val parts = cookie.split("=", limit = 2)
-            if (parts.size == 2) {
-                when (parts[0].trim().lowercase()) {
-                    "remid" -> newRemid = parts[1].trim()
-                    "sid" -> newSid = parts[1].trim()
-                }
-            }
-        }
-        if (newRemid != null || newSid != null) {
-            pendingNewRemid = newRemid
-            pendingNewSid = newSid
+        fun absorb(response: okhttp3.Response) {
+            rotated = accumulateRotatedCookies(rotated, response.headers("Set-Cookie"))
         }
     }
 
@@ -79,29 +70,31 @@ class EAApiService {
 
     /**
      * 完整认证流程：remid/sid → access_token → persona → auth_code → sessionId。
-     * 用于首次登录 / 手动验证，返回 SessionInfo（含 persona 用于展示）。
+     * 用于首次登录 / 手动验证，返回 SessionInfo（含 persona 用于展示、rotated 用于落库）。
      */
     suspend fun authenticate(remid: String, sid: String): Result<SessionInfo> = runCatching {
+        val cookies = CookieCollector()
         val cookieHeader = "remid=$remid; sid=$sid"
-        val accessToken = getAccessToken(cookieHeader)
+        val accessToken = getAccessToken(cookieHeader, cookies)
         val persona = getPersonaInfo(accessToken)
-        val authCode = getAuthCode(accessToken, cookieHeader)
+        val authCode = getAuthCode(accessToken, cookieHeader, cookies)
         val sessionId = getSessionId(authCode)
-        SessionInfo(sessionId, persona)
+        SessionInfo(sessionId, persona, cookies.rotated)
     }
 
-    suspend fun refreshSessionId(remid: String, sid: String): String = refreshMutex.withLock {
+    suspend fun refreshSessionId(remid: String, sid: String): RefreshResult = refreshMutex.withLock {
+        val cookies = CookieCollector()
         val cookieHeader = "remid=$remid; sid=$sid"
-        val accessToken = getAccessToken(cookieHeader)
-        val authCode = getAuthCode(accessToken, cookieHeader)
-        getSessionId(authCode)
+        val accessToken = getAccessToken(cookieHeader, cookies)
+        val authCode = getAuthCode(accessToken, cookieHeader, cookies)
+        RefreshResult(getSessionId(authCode), cookies.rotated)
     }
 
     // ═══════════════════════════════════════════════════
     // EA API：remid/sid → access_token
     // ═══════════════════════════════════════════════════
 
-    private fun getAccessToken(cookieHeader: String): String {
+    private fun getAccessToken(cookieHeader: String, cookies: CookieCollector): String {
         val url = "https://accounts.ea.com/connect/auth" +
                 "?client_id=ORIGIN_JS_SDK" +
                 "&response_type=token" +
@@ -115,7 +108,7 @@ class EAApiService {
 
         client.newCall(request).execute().use { response ->
             // 被动更新 remid/sid（对应 EAappEmulater EaApi.UpdateCookie）
-            updateCookiesFromResponse(response)
+            cookies.absorb(response)
 
             val body = response.body?.string()
                 ?: throw Exception("Empty response getting access token")
@@ -171,7 +164,11 @@ class EAApiService {
     // EA API：access_token → auth_code（换 Battlelog sessionId 用）
     // ═══════════════════════════════════════════════════
 
-    private fun getAuthCode(accessToken: String, cookieHeader: String): String {
+    private fun getAuthCode(
+        accessToken: String,
+        cookieHeader: String,
+        cookies: CookieCollector
+    ): String {
         val url = "https://accounts.ea.com/connect/auth" +
                 "?access_token=$accessToken" +
                 "&client_id=sparta-backend-as-user-pc" +
@@ -184,7 +181,7 @@ class EAApiService {
 
         client.newCall(request).execute().use { response ->
             // 被动更新 remid/sid（对应 EAappEmulater EaApi.UpdateCookie）
-            updateCookiesFromResponse(response)
+            cookies.absorb(response)
 
             val location = response.header("Location")
             if (response.code != 302)

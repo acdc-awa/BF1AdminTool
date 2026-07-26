@@ -27,10 +27,22 @@ class BattlelogSessionManager(
         return getSessionId(account)
     }
 
-    suspend fun refreshActiveSession(): Boolean {
-        val account = accountRepository.getActiveEncrypted() ?: return false
-        refreshSessionId(account)
-        return true
+    /**
+     * 后台定时刷新入口（[SessionRefreshWorker]）。
+     * 距上次刷新不足 [SESSION_REFRESH_INTERVAL_MS] 时跳过，避免 WorkManager
+     * 提前触发或用户刚手动刷过时白跑一轮 EA 兑换。
+     */
+    suspend fun refreshActiveSession(): Boolean = refreshMutex.withLock {
+        val account = accountRepository.getActiveEncrypted() ?: return@withLock false
+        val cached = sessionCacheDao.getByAccountId(account.id)
+        if (cached != null &&
+            cached.remidFingerprint == remidFingerprint(account.remid) &&
+            !isSessionRefreshDue(cached.refreshedAt, now())
+        ) {
+            return@withLock true
+        }
+        refreshSessionIdLocked(account)
+        true
     }
 
     suspend fun recordSession(accountId: Long, remid: String, sessionId: String) {
@@ -55,12 +67,19 @@ class BattlelogSessionManager(
         }
     }
 
+    /**
+     * 读路径只要求 session 仍在 [SESSION_MAX_AGE_MS] 有效期内。
+     *
+     * 定期续期由 [SessionRefreshScheduler] 的 6h 周期任务负责，读路径不该重复承担 ——
+     * 否则任何超过 6h 的 session 都会在 UI 线程链路上强制阻塞一轮 3 次 EA 请求。
+     * 即使后台任务被 Doze 压制导致 session 偏旧，[withActiveSession] 也会在失败时
+     * 清缓存重兑换一次，可以自愈。
+     */
     private suspend fun getSessionId(account: EncryptedAccount): String = refreshMutex.withLock {
         val cached = sessionCacheDao.getByAccountId(account.id)
         if (cached != null &&
             cached.remidFingerprint == remidFingerprint(account.remid) &&
-            isSessionUsable(cached.refreshedAt, now()) &&
-            !isSessionRefreshDue(cached.refreshedAt, now())
+            isSessionUsable(cached.refreshedAt, now())
         ) {
             try {
                 return@withLock AccountCrypto.decrypt(cached.encryptedSessionId, context)
@@ -71,15 +90,11 @@ class BattlelogSessionManager(
         refreshSessionIdLocked(account)
     }
 
-    private suspend fun refreshSessionId(account: EncryptedAccount): String = refreshMutex.withLock {
-        refreshSessionIdLocked(account)
-    }
-
     private suspend fun refreshSessionIdLocked(account: EncryptedAccount): String {
-        val sessionId = adminRepository.refreshSessionId(account.id, account.remid, account.sid)
-        val refreshedAccount = accountRepository.getDecryptedById(account.id) ?: account
-        saveSession(account.id, refreshedAccount.remid, sessionId)
-        return sessionId
+        val result = adminRepository.refreshSessionId(account.id, account.remid, account.sid)
+        // 轮换后的 remid 直接由调用返回，无需回读 DB 猜测。
+        saveSession(account.id, result.rotated.remid ?: account.remid, result.sessionId)
+        return result.sessionId
     }
 
     private suspend fun saveSession(accountId: Long, remid: String, sessionId: String) {

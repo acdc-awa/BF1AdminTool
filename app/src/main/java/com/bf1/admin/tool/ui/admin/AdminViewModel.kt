@@ -243,7 +243,12 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 val session = withContext(Dispatchers.IO) {
                     adminRepo.authenticate(remid, sid).getOrThrow()
                 }
-                sessionManager.recordSession(account.id, remid, session.sessionId)
+                // 验证过程中 EA 可能已轮换 cookie，落库到本账号并同步 UI 显示。
+                adminRepo.persistRotation(account.id, remid, sid, session.rotated)
+                sessionManager.recordSession(
+                    account.id, session.rotated.remid ?: remid, session.sessionId
+                )
+                loadDecryptedCredentials()
                 _message.emit("保存成功，验证通过")
             } catch (e: Exception) {
                 _message.emit("验证失败，已保存但凭证可能已失效: ${e.message}")
