@@ -37,14 +37,17 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 val session = withContext(Dispatchers.IO) {
                     adminRepo.authenticate(remid, sid).getOrThrow()
                 }
+                // 认证过程中 EA 可能已轮换 cookie，账号从建档起就存最新值。
+                val effectiveRemid = session.rotated.remid ?: remid
+                val effectiveSid = session.rotated.sid ?: sid
                 val accountId = accountRepo.addOrUpdateAccount(
                     name = session.persona.displayName,
                     personaId = session.persona.personaId,
-                    remid = remid,
-                    sid = sid
+                    remid = effectiveRemid,
+                    sid = effectiveSid
                 )
                 accountRepo.switchActive(accountId)
-                sessionManager.recordSession(accountId, remid, session.sessionId)
+                sessionManager.recordSession(accountId, effectiveRemid, session.sessionId)
                 _message.emit("登录成功: ${session.persona.displayName}")
                 _loginSuccess.emit(Unit)
             } catch (e: Exception) {
