@@ -28,7 +28,9 @@ class BlazePacket(
     val length: Int,
     val error: BlazeError?,
     val errc: Long?,
-    val data: Map<String, Any?>?
+    val data: Map<String, Any?>?,
+    /** 错误包的原始字节（诊断用），正常包为 null。 */
+    val rawBytes: ByteArray? = null
 )
 
 /**

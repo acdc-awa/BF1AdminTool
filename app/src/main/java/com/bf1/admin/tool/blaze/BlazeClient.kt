@@ -88,9 +88,11 @@ class BlazeClient(
         val resp = send("Authentication.login", BlazePackets.login(authCode))
         if (resp.error != null) {
             val e = resp.error
+            val raw = resp.rawBytes?.joinToString("") { "%02x".format(it) }.orEmpty()
             throw BlazeProtocolException(
                 "Blaze 登录失败: ${e.message} " +
-                    "(component=${e.component} errc=0x${resp.errc?.toString(16)})"
+                    "(component=${e.component} errc=0x${resp.errc?.toString(16)} " +
+                    "raw=${raw.take(160)})"
             )
         }
         val data = resp.data

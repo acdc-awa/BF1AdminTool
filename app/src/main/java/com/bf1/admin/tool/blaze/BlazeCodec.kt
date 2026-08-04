@@ -236,7 +236,8 @@ object BlazeCodec {
                 length = payloadLength,
                 error = BlazeError(compName, def?.name ?: errorCode.toString(), def?.description, errc),
                 errc = errc,
-                data = null
+                data = null,
+                rawBytes = buffer
             )
         } else {
             BlazePacket(method, packetType, packetId, payloadLength, null, null, data)
