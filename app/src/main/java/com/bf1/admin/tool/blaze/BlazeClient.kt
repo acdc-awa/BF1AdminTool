@@ -122,10 +122,19 @@ class BlazeClient(
     /** UserSessions.lookupUsers → userExtendedData（连接组三要素），失败返回 null。 */
     private suspend fun lookupUserExtendedData(displayName: String): List<Long>? {
         val resp = send("30722.50", BlazePackets.lookupUsers(displayName))
-        val ulst = resp.data?.get("ULST 43") as? List<*>
-        val first = ulst?.firstOrNull() as? Map<*, *> ?: return null
-        val edat = first["EDAT 3"] as? Map<*, *> ?: return null
-        val inner = edat["ULST 49"] as? List<*> ?: return null
+        if (resp.error != null) {
+            debug("lookupUsers 错误: ${resp.error.message} (component=${resp.error.component} errc=0x${resp.errc?.toString(16)})")
+            return null
+        }
+        val data = resp.data
+        val ulst = data?.get("ULST 43") as? List<*>
+        val first = ulst?.firstOrNull() as? Map<*, *>
+        val edat = first?.get("EDAT 3") as? Map<*, *>
+        val inner = edat?.get("ULST 49") as? List<*>
+        if (inner == null) {
+            debug("lookupUsers 解析失败: keys=${data?.keys} ulst=${ulst?.size}")
+            return null
+        }
         return inner.mapNotNull { (it as? Number)?.toLong() }
     }
 
