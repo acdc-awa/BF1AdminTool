@@ -9,7 +9,8 @@
 class BlazeError(
     val component: String,
     val name: String,
-    val description: String?
+    val description: String?,
+    val errc: Long? = null
 ) : Exception(name) {
     override val message: String
         get() = listOfNotNull(name, description).joinToString(": ")
