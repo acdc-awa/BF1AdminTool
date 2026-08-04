@@ -10,6 +10,7 @@ import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.repository.ServerRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,7 +99,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
         _logs.value = emptyList()
         _phase.value = if (diagnostic) "诊断中" else "准备中"
         _isRunning.value = true
-        runJob = viewModelScope.launch {
+        runJob = viewModelScope.launch(Dispatchers.IO) {
             val onEvent: (CardToolService.Event) -> Unit = { event ->
                 when (event) {
                     is CardToolService.Event.Log -> {
