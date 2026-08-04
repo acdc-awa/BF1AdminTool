@@ -16,6 +16,7 @@ import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.remote.EAApiService
 import com.bf1.admin.tool.ui.admin.AdminViewModel
+import com.bf1.admin.tool.ui.cardtool.CardToolScreen
 import com.bf1.admin.tool.ui.common.UpdateDialog
 import com.bf1.admin.tool.util.UpdateChecker
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ fun HomeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val decryptedCredentials by viewModel.decryptedCredentials.collectAsState()
     val lookupServerName by viewModel.lookupServerName.collectAsState()
+    val lookupServerId by viewModel.lookupServerId.collectAsState()
     val isLookingUpServer by viewModel.isLookingUpServer.collectAsState()
     val lookupError by viewModel.lookupError.collectAsState()
 
@@ -308,7 +310,13 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(if (selectedTab == 0) "管理员管理" else "设置")
+                    Text(
+                        when (selectedTab) {
+                            0 -> "管理员管理"
+                            1 -> "设置"
+                            else -> "卡服"
+                        }
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -328,6 +336,12 @@ fun HomeScreen(
                     onClick = { selectedTab = 1 },
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                     label = { Text("设置") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.SportsEsports, contentDescription = null) },
+                    label = { Text("卡服") }
                 )
             }
         }
@@ -361,6 +375,7 @@ fun HomeScreen(
                 servers = servers,
                 isLoading = isLoading,
                 lookupServerName = lookupServerName,
+                lookupServerId = lookupServerId,
                 isLookingUpServer = isLookingUpServer,
                 lookupError = lookupError,
                 onShowAccountSwitcher = { showAccountSwitcher = it },
@@ -373,6 +388,11 @@ fun HomeScreen(
                     viewModel.addServerFromSettings(serverId, onSuccess)
                 },
                 snackbarHostState = snackbarHostState
+            )
+            2 -> CardToolScreen(
+                modifier = Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
             )
         }
     }

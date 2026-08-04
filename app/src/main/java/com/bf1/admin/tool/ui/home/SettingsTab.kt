@@ -37,6 +37,7 @@ fun SettingsTab(
     servers: List<ServerEntity>,
     isLoading: Boolean,
     lookupServerName: String?,
+    lookupServerId: String?,
     isLookingUpServer: Boolean,
     lookupError: String?,
     onShowAccountSwitcher: (Boolean) -> Unit,
@@ -92,6 +93,7 @@ fun SettingsTab(
     if (showAddServerDialog) {
         AddServerDialog(
             lookupServerName = lookupServerName,
+            lookupServerId = lookupServerId,
             isLookingUp = isLookingUpServer,
             lookupError = lookupError,
             isLoading = isLoading,
@@ -501,6 +503,7 @@ private fun AccountDetailDialog(
 @Composable
 private fun AddServerDialog(
     lookupServerName: String?,
+    lookupServerId: String?,
     isLookingUp: Boolean,
     lookupError: String?,
     isLoading: Boolean,
@@ -508,9 +511,9 @@ private fun AddServerDialog(
     onAdd: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var serverId by remember { mutableStateOf("") }
+    var gameId by remember { mutableStateOf("") }
 
-    LaunchedEffect(serverId) { onLookup(serverId) }
+    LaunchedEffect(gameId) { onLookup(gameId) }
 
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -518,23 +521,23 @@ private fun AddServerDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "请输入 8 位服务器 ID",
+                    "请输入 14 位 GameID（可在 GameTools / 服务器链接中获取）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 OutlinedTextField(
-                    value = serverId,
+                    value = gameId,
                     onValueChange = {
-                        if (it.length <= 8) serverId = it.filter { c -> c.isDigit() }
+                        if (it.length <= 14) gameId = it.filter { ch -> ch.isDigit() }
                     },
-                    label = { Text("服务器 ID (8位数字)") },
+                    label = { Text("GameID (14位数字)") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = lookupError != null
                 )
 
-                if (serverId.length == 8) {
+                if (gameId.length == 14) {
                     when {
                         isLookingUp -> Text(
                             "正在查询服务器信息...",
@@ -547,12 +550,20 @@ private fun AddServerDialog(
                                 containerColor = MaterialTheme.colorScheme.primaryContainer
                             )
                         ) {
-                            Text(
-                                "服务器：$lookupServerName",
-                                modifier = Modifier.padding(12.dp),
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 2
-                            )
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    "服务器：$lookupServerName",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 2
+                                )
+                                if (lookupServerId != null) {
+                                    Text(
+                                        "ServerID：$lookupServerId",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                         lookupError != null -> Text(
                             lookupError!!,
@@ -565,8 +576,8 @@ private fun AddServerDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onAdd(serverId) },
-                enabled = !isLoading && serverId.length == 8 && lookupServerName != null
+                onClick = { onAdd(gameId) },
+                enabled = !isLoading && gameId.length == 14 && lookupServerName != null
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
