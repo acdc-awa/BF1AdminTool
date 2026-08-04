@@ -65,6 +65,9 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val _lookupServerName = MutableStateFlow<String?>(null)
     val lookupServerName: StateFlow<String?> = _lookupServerName.asStateFlow()
 
+    private val _lookupServerId = MutableStateFlow<String?>(null)
+    val lookupServerId: StateFlow<String?> = _lookupServerId.asStateFlow()
+
     private val _isLookingUpServer = MutableStateFlow(false)
     val isLookingUpServer: StateFlow<Boolean> = _isLookingUpServer.asStateFlow()
 
@@ -259,10 +262,11 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ── 服务器查询（用于设置页添加服务器弹窗）──
-    fun lookupServer(serverId: String) {
+    fun lookupServer(gameId: String) {
         val generation = ++lookupGeneration
-        if (serverId.length != 8) {
+        if (gameId.length != 14) {
             _lookupServerName.value = null
+            _lookupServerId.value = null
             _lookupError.value = null
             _isLookingUpServer.value = false
             return
@@ -270,19 +274,22 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLookingUpServer.value = true
             _lookupServerName.value = null
+            _lookupServerId.value = null
             _lookupError.value = null
             try {
-                val (_, name) = sessionManager.withActiveSession { sessionId ->
+                val rsp = sessionManager.withActiveSession { sessionId ->
                     withContext(Dispatchers.IO) {
-                        adminRepo.getServerDetails(sessionId, serverId)
+                        adminRepo.getFullServerDetails(sessionId, gameId)
                     }
                 }
                 if (generation == lookupGeneration) {
-                    _lookupServerName.value = name
+                    _lookupServerName.value = rsp.serverSettings.name
+                    _lookupServerId.value = rsp.serverId
                 }
             } catch (e: Exception) {
                 if (generation == lookupGeneration) {
                     _lookupServerName.value = null
+                    _lookupServerId.value = null
                     _lookupError.value = e.message ?: "服务器查询失败，请稍后重试。"
                 }
             } finally {
@@ -293,20 +300,32 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addServerFromSettings(serverId: String, onSuccess: () -> Unit) {
+    fun addServerFromSettings(gameId: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val (id, name) = sessionManager.withActiveSession { sessionId ->
+                val rsp = sessionManager.withActiveSession { sessionId ->
                     withContext(Dispatchers.IO) {
-                        adminRepo.getServerDetails(sessionId, serverId)
+                        adminRepo.getFullServerDetails(sessionId, gameId)
                     }
                 }
                 val account = _activeAccount.value ?: return@launch
-                val newId = serverRepo.addServer(id, name, account.personaId)
+                val newId = serverRepo.addServer(
+                    serverId = rsp.serverId,
+                    serverName = rsp.serverSettings.name,
+                    ownerPersonaId = account.personaId,
+                    gameId = rsp.gameId
+                )
                 serverRepo.switchActive(account.personaId, newId)
-                _activeServer.value = ServerEntity(newId, id, name, account.personaId, true)
-                _message.emit("已添加服务器: $name")
+                _activeServer.value = ServerEntity(
+                    id = newId,
+                    serverId = rsp.serverId,
+                    serverName = rsp.serverSettings.name,
+                    ownerPersonaId = account.personaId,
+                    isActive = true,
+                    gameId = rsp.gameId
+                )
+                _message.emit("已添加服务器: ${rsp.serverSettings.name}")
                 onSuccess()
             } catch (e: Exception) {
                 _message.emit("添加服务器失败: ${e.message}")

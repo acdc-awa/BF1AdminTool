@@ -48,8 +48,9 @@ class AdminRepository(
         )
     }
 
-    fun getServerDetails(sessionId: String, serverId: String) =
-        api.getServerDetails(sessionId, serverId)
+    /** 按 gameId 查询服务器完整信息（响应含 serverId + gameId）。 */
+    fun getFullServerDetails(sessionId: String, gameId: String) =
+        api.getFullServerDetails(sessionId, gameId)
 
     fun getAdminList(sessionId: String, serverId: String) =
         api.getAdminList(sessionId, serverId)
