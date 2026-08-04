@@ -1,5 +1,6 @@
 ﻿package com.bf1.admin.tool.ui.cardtool
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,14 +26,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.widget.Toast
 import com.bf1.admin.tool.cardtool.CardToolConfig
 import com.bf1.admin.tool.cardtool.JoinStyle
 import com.bf1.admin.tool.cardtool.MODE_PRETTY_NAMES
 import com.bf1.admin.tool.cardtool.MODES
+import com.bf1.admin.tool.ui.common.ServerSelector
 
 /**
- * 卡服页：服务器选择（含 gameId 回填） + 配置区 + 操作按钮 + 运行日志。
+ * 卡行动页：服务器选择（与上下管理一致） + GameID 回填 + 可折叠配置卡 + 操作按钮 + 运行日志卡片。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +42,7 @@ fun CardToolScreen(
     viewModel: CardToolViewModel = viewModel()
 ) {
     val accounts by viewModel.accounts.collectAsState()
+    val activeAccount by viewModel.activeAccount.collectAsState()
     val servers by viewModel.servers.collectAsState()
     val activeServer by viewModel.activeServer.collectAsState()
     val logs by viewModel.logs.collectAsState()
@@ -57,8 +59,7 @@ fun CardToolScreen(
     var primeRounds by rememberSaveable { mutableStateOf("2") }
     var primeStay by rememberSaveable { mutableStateOf("5") }
     var showConfirm by remember { mutableStateOf(false) }
-    var serverMenu by remember { mutableStateOf(false) }
-    var modeMenu by remember { mutableStateOf(false) }
+    var configExpanded by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
 
     // 服务器切换时预填其 gameId
@@ -85,26 +86,29 @@ fun CardToolScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ServerCard(
-                activeServer = activeServer,
+            ServerSelector(
                 servers = servers,
+                activeServer = activeServer,
+                activeAccount = activeAccount,
+                onServerSelected = { viewModel.switchServer(it) }
+            )
+
+            GameIdRow(
+                activeServer = activeServer,
                 gameIdInput = gameIdInput,
                 gameIdValid = gameIdValid,
                 onGameIdChange = { if (it.length <= 14) gameIdInput = it.filter(Char::isDigit) },
-                onSaveGameId = { viewModel.saveGameId(gameIdInput) },
-                serverMenu = serverMenu,
-                onServerMenuChange = { serverMenu = it },
-                onSwitchServer = { viewModel.switchServer(it) }
+                onSaveGameId = { viewModel.saveGameId(gameIdInput) }
             )
 
             ConfigCard(
+                expanded = configExpanded,
+                onExpandedChange = { configExpanded = it },
                 selectedMode = selectedMode,
                 onModeSelected = { selectedMode = it },
-                modeMenu = modeMenu,
-                onModeMenuChange = { modeMenu = it },
                 player = player,
                 onPlayerSelected = { player = it },
                 minMap = minMap,
@@ -152,7 +156,7 @@ fun CardToolScreen(
                             contentColor = MaterialTheme.colorScheme.onError
                         )
                     ) {
-                        Text("开始卡服")
+                        Text("开始卡行动")
                     }
                 }
             }
@@ -165,7 +169,7 @@ fun CardToolScreen(
             }
         }
 
-        // ═══════ 下部：运行日志（固定高度）═══════
+        // ═══════ 下部：运行日志卡片（固定高度）═══════
         LogSection(
             logs = logs,
             phase = phase,
@@ -174,11 +178,11 @@ fun CardToolScreen(
         )
     }
 
-    // 开始卡服确认
+    // 开始卡行动确认
     if (showConfirm) {
         AlertDialog(
             onDismissRequest = { showConfirm = false },
-            title = { Text("开始卡服") },
+            title = { Text("开始卡行动") },
             text = { Text("将修改服务器轮换并占位进服，确认开始？") },
             confirmButton = {
                 Button(
@@ -207,86 +211,52 @@ private fun EmptyHint(text: String) {
 }
 
 // ═══════════════════════════════════════════════════
-// 服务器卡片
+// GameID 行
 // ═══════════════════════════════════════════════════
 
 @Composable
-private fun ServerCard(
+private fun GameIdRow(
     activeServer: com.bf1.admin.tool.data.local.entity.ServerEntity?,
-    servers: List<com.bf1.admin.tool.data.local.entity.ServerEntity>,
     gameIdInput: String,
     gameIdValid: Boolean,
     onGameIdChange: (String) -> Unit,
-    onSaveGameId: () -> Unit,
-    serverMenu: Boolean,
-    onServerMenuChange: (Boolean) -> Unit,
-    onSwitchServer: (com.bf1.admin.tool.data.local.entity.ServerEntity) -> Unit
+    onSaveGameId: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        activeServer?.serverName ?: "未选择服务器",
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2
-                    )
-                    Text(
-                        "ServerID: ${activeServer?.serverId ?: "-"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Box {
-                    TextButton(onClick = { onServerMenuChange(true) }) { Text("切换") }
-                    DropdownMenu(expanded = serverMenu, onDismissRequest = { onServerMenuChange(false) }) {
-                        servers.forEach { s ->
-                            DropdownMenuItem(
-                                text = { Text(s.serverName, maxLines = 1) },
-                                onClick = {
-                                    onSwitchServer(s)
-                                    onServerMenuChange(false)
-                                }
-                            )
-                        }
-                    }
-                }
+    OutlinedTextField(
+        value = gameIdInput,
+        onValueChange = onGameIdChange,
+        label = { Text("GameID (14位数字)") },
+        singleLine = true,
+        isError = gameIdInput.isNotEmpty() && gameIdInput.length == 14 && !gameIdValid,
+        trailingIcon = {
+            IconButton(onClick = onSaveGameId, enabled = gameIdValid) {
+                Icon(Icons.Default.Save, contentDescription = "保存 GameID")
             }
-            OutlinedTextField(
-                value = gameIdInput,
-                onValueChange = onGameIdChange,
-                label = { Text("GameID (14位数字)") },
-                singleLine = true,
-                isError = gameIdInput.isNotEmpty() && gameIdInput.length == 14 && !gameIdValid,
-                trailingIcon = {
-                    IconButton(onClick = onSaveGameId, enabled = gameIdValid) {
-                        Icon(Icons.Default.Save, contentDescription = "保存 GameID")
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
+        },
+        supportingText = {
+            val serverId = activeServer?.serverId
+            val missing = activeServer?.gameId == null
+            Text(
+                if (missing && serverId != null) "ServerID: $serverId · 该服务器未保存 GameID，输入后点保存"
+                else if (serverId != null) "ServerID: $serverId"
+                else ""
             )
-            if (activeServer?.gameId == null) {
-                Text(
-                    "该服务器尚未保存 GameID，输入后点保存；之后卡服会直接使用",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 // ═══════════════════════════════════════════════════
-// 配置卡片
+// 卡行动配置（可折叠卡片，默认收起）
 // ═══════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfigCard(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     selectedMode: Int,
     onModeSelected: (Int) -> Unit,
-    modeMenu: Boolean,
-    onModeMenuChange: (Boolean) -> Unit,
     player: Int,
     onPlayerSelected: (Int) -> Unit,
     minMap: String,
@@ -303,101 +273,125 @@ private fun ConfigCard(
     onPrimeStayChange: (String) -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("卡服配置", style = MaterialTheme.typography.titleMedium)
-
-            // 游戏模式下拉
-            ExposedDropdownMenuBox(expanded = modeMenu, onExpandedChange = onModeMenuChange) {
-                OutlinedTextField(
-                    value = MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "选择模式",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("游戏模式") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeMenu) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            // 头部：标题 + 折叠箭头（整行可点击）
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onExpandedChange(!expanded) }
+                    .padding(vertical = 12.dp)
+            ) {
+                Text(
+                    "卡行动配置",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
                 )
-                ExposedDropdownMenu(expanded = modeMenu, onDismissRequest = { onModeMenuChange(false) }) {
-                    MODES.toSortedMap().forEach { (mode, name) ->
-                        DropdownMenuItem(
-                            text = { Text(MODE_PRETTY_NAMES[name] ?: name) },
-                            onClick = {
-                                onModeSelected(mode)
-                                onModeMenuChange(false)
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "收起配置" else "展开配置"
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HorizontalDivider()
+
+                    // 游戏模式下拉
+                    var modeMenu by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(expanded = modeMenu, onExpandedChange = { modeMenu = it }) {
+                        OutlinedTextField(
+                            value = MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "选择模式",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("游戏模式") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeMenu) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        )
+                        ExposedDropdownMenu(expanded = modeMenu, onDismissRequest = { modeMenu = false }) {
+                            MODES.toSortedMap().forEach { (mode, name) ->
+                                DropdownMenuItem(
+                                    text = { Text(MODE_PRETTY_NAMES[name] ?: name) },
+                                    onClick = {
+                                        onModeSelected(mode)
+                                        modeMenu = false
+                                    }
+                                )
                             }
+                        }
+                    }
+
+                    // 人数
+                    Text("人数", style = MaterialTheme.typography.bodyMedium)
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        val options = listOf(0x40, 0x28, 0x20, 0x18)
+                        options.forEachIndexed { index, value ->
+                            SegmentedButton(
+                                selected = player == value,
+                                onClick = { onPlayerSelected(value) },
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+                            ) {
+                                Text("$value")
+                            }
+                        }
+                    }
+
+                    // 最少地图数
+                    OutlinedTextField(
+                        value = minMap,
+                        onValueChange = onMinMapChange,
+                        label = { Text("最少地图数") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 进服方式
+                    Text("进服方式", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        listOf(JoinStyle.DIRECT to "直连（推荐）", JoinStyle.CARDTOOL to "观战占位").forEach { (style, label) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { onJoinStyleSelected(style) }
+                            ) {
+                                RadioButton(selected = joinStyle == style, onClick = { onJoinStyleSelected(style) })
+                                Text(label, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+
+                    // 高级选项（预热）
+                    TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }) {
+                        Text(if (showAdvanced) "收起高级选项" else "高级选项（预热）")
+                        Icon(
+                            if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
                         )
                     }
-                }
-            }
-
-            // 人数
-            Text("人数", style = MaterialTheme.typography.bodyMedium)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val options = listOf(0x40, 0x28, 0x20, 0x18)
-                options.forEachIndexed { index, value ->
-                    SegmentedButton(
-                        selected = player == value,
-                        onClick = { onPlayerSelected(value) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
-                    ) {
-                        Text("$value")
+                    AnimatedVisibility(visible = showAdvanced) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = primeGids,
+                                onValueChange = onPrimeGidsChange,
+                                label = { Text("暖服 GameID（逗号分隔，可多个）") },
+                                minLines = 2,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = primeRounds,
+                                onValueChange = onPrimeRoundsChange,
+                                label = { Text("每服进出次数") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = primeStay,
+                                onValueChange = onPrimeStayChange,
+                                label = { Text("每次停留秒数") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
-                }
-            }
-
-            // 最少地图数
-            OutlinedTextField(
-                value = minMap,
-                onValueChange = onMinMapChange,
-                label = { Text("最少地图数") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // 进服方式
-            Text("进服方式", style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                listOf(JoinStyle.DIRECT to "直连（推荐）", JoinStyle.CARDTOOL to "观战占位").forEach { (style, label) ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { onJoinStyleSelected(style) }
-                    ) {
-                        RadioButton(selected = joinStyle == style, onClick = { onJoinStyleSelected(style) })
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-
-            // 高级选项
-            TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }) {
-                Text(if (showAdvanced) "收起高级选项" else "高级选项（预热）")
-                Icon(
-                    if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = null
-                )
-            }
-            AnimatedVisibility(visible = showAdvanced) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = primeGids,
-                        onValueChange = onPrimeGidsChange,
-                        label = { Text("暖服 GameID（逗号分隔，可多个）") },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = primeRounds,
-                        onValueChange = onPrimeRoundsChange,
-                        label = { Text("每服进出次数") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = primeStay,
-                        onValueChange = onPrimeStayChange,
-                        label = { Text("每次停留秒数") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
         }
@@ -405,7 +399,7 @@ private fun ConfigCard(
 }
 
 // ═══════════════════════════════════════════════════
-// 日志区
+// 运行日志卡片
 // ═══════════════════════════════════════════════════
 
 @Composable
