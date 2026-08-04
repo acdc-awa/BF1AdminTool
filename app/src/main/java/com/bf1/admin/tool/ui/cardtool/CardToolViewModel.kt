@@ -109,6 +109,10 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
                     is CardToolService.Event.Finished -> {
                         _isRunning.value = false
                         _phase.value = null
+                        _logs.value = _logs.value + LogLine(
+                            if (event.success) "完成: ${event.message}" else "失败: ${event.message}",
+                            isError = !event.success
+                        )
                         _message.tryEmit(event.message)
                     }
                 }
