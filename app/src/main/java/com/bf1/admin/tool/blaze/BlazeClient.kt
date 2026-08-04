@@ -27,6 +27,20 @@ object BlazeParsing {
         }
     }
 
+    /**
+     * 从 UserSessions.lookupUsers 响应提取 userExtendedData（连接组三要素）。
+     * 结构：ULST 43[0].EDAT 3.ULST 49[0] = [30722, 2, CGID] —— 必须取 ULST 49 的第一个元素，
+     * 而非遍历整个 ULST 49（CardTool 的 userExtendedData = ULST 49[0]）。
+     */
+    fun parseUserExtendedData(data: Map<String, Any?>?): List<Long>? {
+        val ulst = data?.get("ULST 43") as? List<*>
+        val first = ulst?.firstOrNull() as? Map<*, *>
+        val edat = first?.get("EDAT 3") as? Map<*, *>
+        val inner = edat?.get("ULST 49") as? List<*>
+        val ued = inner?.firstOrNull() as? List<*>
+        return ued?.mapNotNull { (it as? Number)?.toLong() }
+    }
+
     /** 从 getFullGameData 的 gameInfo 提取可用角色列表（RNFO.CRIT 的 key）。 */
     fun rolesFromGameInfo(gameInfo: Map<String, Any?>?): List<String> {
         val rnfo = gameInfo?.get("RNFO 3") as? Map<*, *> ?: gameInfo?.get("RNFO") as? Map<*, *> ?: return emptyList()
@@ -126,16 +140,11 @@ class BlazeClient(
             debug("lookupUsers 错误: ${resp.error.message} (component=${resp.error.component} errc=0x${resp.errc?.toString(16)})")
             return null
         }
-        val data = resp.data
-        val ulst = data?.get("ULST 43") as? List<*>
-        val first = ulst?.firstOrNull() as? Map<*, *>
-        val edat = first?.get("EDAT 3") as? Map<*, *>
-        val inner = edat?.get("ULST 49") as? List<*>
-        if (inner == null) {
-            debug("lookupUsers 解析失败: keys=${data?.keys} ulst=${ulst?.size}")
-            return null
+        val ued = BlazeParsing.parseUserExtendedData(resp.data)
+        if (ued == null) {
+            debug("lookupUsers 解析失败: keys=${resp.data?.keys}")
         }
-        return inner.mapNotNull { (it as? Number)?.toLong() }
+        return ued
     }
 
     /** 进服前上报客户端状态（MODE=1）与网络信息。 */

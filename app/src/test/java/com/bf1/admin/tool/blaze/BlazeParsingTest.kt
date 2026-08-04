@@ -2,6 +2,7 @@
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,6 +56,24 @@ class BlazeParsingTest {
         assertFalse(BlazeParsing.playerInPros(players, 333L))
         assertFalse(BlazeParsing.playerInPros(emptyList(), 1L))
         assertFalse(BlazeParsing.playerInPros(null, 1L))
+    }
+
+    /** ULST 49 的第一个元素就是连接组数组 [30722, 2, CGID]（CardTool 同款取法）。 */
+    @Test
+    fun parseUserExtendedDataTakesFirstElementOfUlst49() {
+        val data = mapOf<String, Any?>(
+            "ULST 43" to listOf(
+                mapOf<String, Any?>("EDAT 3" to mapOf("ULST 49" to listOf(listOf(30722L, 2L, 14376255790206L))))
+            )
+        )
+        assertEquals(listOf(30722L, 2L, 14376255790206L), BlazeParsing.parseUserExtendedData(data))
+    }
+
+    @Test
+    fun parseUserExtendedDataHandlesNullAndEmpty() {
+        assertNull(BlazeParsing.parseUserExtendedData(null))
+        assertNull(BlazeParsing.parseUserExtendedData(mapOf("ULST 43" to emptyList<Any?>())))
+        assertNull(BlazeParsing.parseUserExtendedData(mapOf("ULST 43" to listOf(emptyMap<String, Any?>()))))
     }
 
     @Test
