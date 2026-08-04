@@ -68,8 +68,9 @@ class CardToolService(
 
             onEvent(Event.Log("连接 Blaze 并登录..."))
             val socket = BlazeSocket(host, port)
-            socket.connect()
             try {
+                socket.connect()
+                onEvent(Event.Log("Blaze TCP/TLS 已连接"))
                 val client = BlazeClient(socket)
                 val login = client.login(blazeAuth.authCode)
                 onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))

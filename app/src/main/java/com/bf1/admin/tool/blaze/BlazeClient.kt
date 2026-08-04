@@ -86,6 +86,9 @@ class BlazeClient(
     /** Authentication.login，返回 [BlazeLoginResult]。 */
     suspend fun login(authCode: String): BlazeLoginResult {
         val resp = send("Authentication.login", BlazePackets.login(authCode))
+        if (resp.error != null) {
+            throw BlazeProtocolException("Blaze 登录失败: ${resp.error.message}")
+        }
         val data = resp.data
             ?: throw BlazeProtocolException("Blaze 登录响应无数据")
         val sess = data["SESS 3"] as? Map<*, *>
