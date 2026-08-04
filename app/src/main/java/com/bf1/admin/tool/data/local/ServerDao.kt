@@ -18,10 +18,6 @@ interface ServerDao {
     @Delete
     suspend fun delete(server: ServerEntity)
 
-    /** 回填/更新服务器 gameId（14 位 GUID，卡服功能用）。 */
-    @Query("UPDATE servers SET gameId = :gameId WHERE id = :id")
-    suspend fun updateGameId(id: Long, gameId: String?)
-
     @Query("UPDATE servers SET isActive = 0 WHERE ownerPersonaId = :personaId")
     suspend fun deactivateAllByOwner(personaId: String)
 

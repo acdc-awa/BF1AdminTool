@@ -30,8 +30,5 @@ class ServerRepository(private val serverDao: ServerDao) {
     suspend fun switchActive(personaId: String, id: Long) =
         serverDao.switchActive(personaId, id)
 
-    /** 回填/更新服务器 gameId（14 位 GUID）。 */
-    suspend fun updateGameId(id: Long, gameId: String?) = serverDao.updateGameId(id, gameId)
-
     suspend fun delete(server: ServerEntity) = serverDao.delete(server)
 }
