@@ -1,4 +1,4 @@
-package com.bf1.admin.tool.data.local
+﻿package com.bf1.admin.tool.data.local
 
 import android.content.Context
 import androidx.room.Database
@@ -12,7 +12,7 @@ import com.bf1.admin.tool.data.local.entity.ServerEntity
 
 @Database(
     entities = [AccountEntity::class, ServerEntity::class, SessionCacheEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,7 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "bf1_admin.db"
-                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
             }
         }
 
@@ -46,6 +46,13 @@ abstract class AppDatabase : RoomDatabase() {
                         "FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) " +
                         "ON UPDATE NO ACTION ON DELETE CASCADE)"
                 )
+            }
+        }
+
+        /** v2 → v3：servers 表新增可空 gameId 列（14 位 GUID，卡服功能用）。 */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE servers ADD COLUMN gameId TEXT")
             }
         }
     }

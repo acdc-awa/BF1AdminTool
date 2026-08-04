@@ -1,5 +1,6 @@
 package com.bf1.admin.tool.data.remote
 
+import com.bf1.admin.tool.cardtool.RspInfo
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType.Companion.toMediaType
@@ -233,13 +234,18 @@ class EAApiService {
     // Battlelog API：服务器 & 管理员操作
     // ═══════════════════════════════════════════════════
 
-    fun getServerDetails(sessionId: String, serverId: String): Pair<String, String> {
+    /**
+     * GameServer.getFullServerDetails：按 14 位 gameId 查询服务器完整信息。
+     * 响应同时含 gameId（serverInfo）与 serverId（rspInfo.server），
+     * 是添加服务器时同时拿到两个 ID 的唯一可靠途径（RSP.getServerDetails 只返回 serverId）。
+     */
+    fun getFullServerDetails(sessionId: String, gameId: String): RspInfo {
         val body = JSONObject().apply {
             put("jsonrpc", "2.0")
-            put("method", "RSP.getServerDetails")
+            put("method", "GameServer.getFullServerDetails")
             put("params", JSONObject().apply {
                 put("game", "tunguska")
-                put("serverId", serverId)
+                put("gameId", gameId)
             })
             put("id", UUID.randomUUID().toString())
         }
@@ -254,17 +260,16 @@ class EAApiService {
             .build()
 
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw ServerLookupException(response.code)
-            }
             val respBody = response.body?.string()
-                ?: throw Exception("Empty response getting server details")
+                ?: throw Exception("Empty response getting full server details")
             val json = JSONObject(respBody)
+            if (json.has("error")) {
+                val err = json.getJSONObject("error")
+                throw GatewayError(err.optInt("code"), err.optString("message"), "GameServer.getFullServerDetails")
+            }
             val result = json.optJSONObject("result")
                 ?: throw Exception("No result: $respBody")
-            val server = result.optJSONObject("server")
-            val name = server?.optString("name")?.ifEmpty { serverId } ?: serverId
-            return Pair(serverId, name)
+            return parseFullServerDetails(result)
         }
     }
 
