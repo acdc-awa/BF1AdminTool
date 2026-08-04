@@ -313,8 +313,8 @@ fun HomeScreen(
                     Text(
                         when (selectedTab) {
                             0 -> "管理员管理"
-                            1 -> "设置"
-                            else -> "卡服"
+                            1 -> "卡行动"
+                            else -> "设置"
                         }
                     )
                 },
@@ -334,14 +334,14 @@ fun HomeScreen(
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("设置") }
+                    icon = { Icon(Icons.Default.SportsEsports, contentDescription = null) },
+                    label = { Text("卡行动") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.SportsEsports, contentDescription = null) },
-                    label = { Text("卡服") }
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    label = { Text("设置") }
                 )
             }
         }
@@ -368,7 +368,12 @@ fun HomeScreen(
                 playerInput = playerInput,
                 onPlayerInputChange = { playerInput = it }
             )
-            1 -> SettingsTab(
+            1 -> CardToolScreen(
+                modifier = Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+            )
+            2 -> SettingsTab(
                 modifier = Modifier.padding(padding),
                 activeAccount = activeAccount,
                 decryptedCredentials = decryptedCredentials,
@@ -388,11 +393,6 @@ fun HomeScreen(
                     viewModel.addServerFromSettings(serverId, onSuccess)
                 },
                 snackbarHostState = snackbarHostState
-            )
-            2 -> CardToolScreen(
-                modifier = Modifier
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
             )
         }
     }

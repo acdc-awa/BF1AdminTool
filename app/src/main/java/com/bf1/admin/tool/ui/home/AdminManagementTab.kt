@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.bf1.admin.tool.data.remote.EAApiService
+import com.bf1.admin.tool.ui.common.ServerSelector
 
 /**
  * Tab 0: 管理员管理。
@@ -158,110 +159,6 @@ fun AdminManagementTab(
         )
     }
 }
-
-// ──────────────────────────────────────
-// 服务器选择器
-// ──────────────────────────────────────
-
-@Composable
-private fun ServerSelector(
-    servers: List<com.bf1.admin.tool.data.local.entity.ServerEntity>,
-    activeServer: com.bf1.admin.tool.data.local.entity.ServerEntity?,
-    activeAccount: com.bf1.admin.tool.data.local.entity.AccountEntity?,
-    onServerSelected: (com.bf1.admin.tool.data.local.entity.ServerEntity) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var buttonWidth by remember { mutableStateOf(0) }
-    val density = LocalDensity.current
-
-    val iconRotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        label = "ArrowRotation"
-    )
-
-    Box(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-            OutlinedButton(
-                onClick = { expanded = !expanded },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { buttonWidth = it.width }
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Dns, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            activeServer?.serverName ?: "未选择服务器",
-                            maxLines = 1
-                        )
-                    }
-                    Icon(
-                        Icons.Default.ArrowDropDown,
-                        contentDescription = "展开",
-                        modifier = Modifier.rotate(iconRotation)
-                    )
-                }
-            }
-
-            val dropdownWidth = with(density) { buttonWidth.toDp() }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.width(dropdownWidth)
-            ) {
-                if (activeAccount == null) {
-                    DropdownMenuItem(
-                        text = { Text("请先登录账号") },
-                        onClick = { expanded = false }
-                    )
-                } else if (servers.isEmpty()) {
-                    DropdownMenuItem(
-                        text = { Text("暂无服务器，请到设置页添加") },
-                        onClick = { expanded = false }
-                    )
-                } else {
-                    servers.forEach { server ->
-                        val isSelected = activeServer?.id == server.id
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    server.serverName,
-                                    maxLines = 2,
-                                    color = if (isSelected)
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.onSurface
-                                )
-                            },
-                            onClick = {
-                                onServerSelected(server)
-                                expanded = false
-                            },
-                            modifier = if (isSelected) {
-                                Modifier.background(
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                    RoundedCornerShape(8.dp)
-                                )
-                            } else {
-                                Modifier
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
 
 // ──────────────────────────────────────
 // 管理员卡片（长按删除）
