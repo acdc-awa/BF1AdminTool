@@ -79,15 +79,6 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** 回填/更新选中服务器的 gameId（14 位 GUID）。 */
-    fun saveGameId(gameId: String) {
-        val server = activeServer.value ?: return
-        if (gameId.length != 14) return
-        viewModelScope.launch {
-            serverRepo.updateGameId(server.id, gameId)
-        }
-    }
-
     /** 只读诊断：登录 + 查询，不改服务器。 */
     fun startDiagnostic(config: CardToolConfig) = start(config, diagnostic = true)
 

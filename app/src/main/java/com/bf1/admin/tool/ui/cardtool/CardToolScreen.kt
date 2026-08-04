@@ -4,9 +4,6 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,7 +11,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,7 +29,8 @@ import com.bf1.admin.tool.cardtool.MODES
 import com.bf1.admin.tool.ui.common.ServerSelector
 
 /**
- * 卡行动页：服务器选择（与上下管理一致） + GameID 回填 + 可折叠配置卡 + 操作按钮 + 运行日志卡片。
+ * 卡行动页：服务器选择（与上下管理一致） + 可折叠配置卡 + 操作按钮 + 日志卡片，
+ * 整页随内容滚动；服务器未保存 GameID 时提示去设置页重新添加（跨版本更新）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +47,6 @@ fun CardToolScreen(
     val isRunning by viewModel.isRunning.collectAsState()
 
     // ── 配置状态 ──
-    var gameIdInput by rememberSaveable { mutableStateOf("") }
     var selectedMode by rememberSaveable { mutableIntStateOf(0x2) }
     var player by rememberSaveable { mutableIntStateOf(0x40) }
     var minMap by rememberSaveable { mutableStateOf("24") }
@@ -62,11 +58,6 @@ fun CardToolScreen(
     var configExpanded by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
 
-    // 服务器切换时预填其 gameId
-    LaunchedEffect(activeServer?.id) {
-        gameIdInput = activeServer?.gameId.orEmpty()
-    }
-
     if (accounts.isEmpty()) {
         EmptyHint("请先在「设置」中添加并选择 EA 账号")
         return
@@ -76,105 +67,114 @@ fun CardToolScreen(
         return
     }
 
-    val effectiveGameId = gameIdInput.ifBlank { activeServer?.gameId.orEmpty() }
-    val gameIdValid = effectiveGameId.length == 14
+    // 新版本按 GameID 添加服务器，旧服务器没有 GameID 时提示重新添加
+    val gameId = activeServer?.gameId
+    val gameIdValid = gameId?.length == 14
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // ═══════ 上部：服务器 + 配置 + 按钮（可滚动）═══════
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ServerSelector(
-                servers = servers,
-                activeServer = activeServer,
-                activeAccount = activeAccount,
-                onServerSelected = { viewModel.switchServer(it) }
-            )
+    // 整页滚动，新日志到达时滚到底部
+    val scrollState = rememberScrollState()
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty()) scrollState.animateScrollTo(scrollState.maxValue)
+    }
 
-            GameIdRow(
-                activeServer = activeServer,
-                gameIdInput = gameIdInput,
-                gameIdValid = gameIdValid,
-                onGameIdChange = { if (it.length <= 14) gameIdInput = it.filter(Char::isDigit) },
-                onSaveGameId = { viewModel.saveGameId(gameIdInput) }
-            )
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ServerSelector(
+            servers = servers,
+            activeServer = activeServer,
+            activeAccount = activeAccount,
+            onServerSelected = { viewModel.switchServer(it) }
+        )
 
-            ConfigCard(
-                expanded = configExpanded,
-                onExpandedChange = { configExpanded = it },
-                selectedMode = selectedMode,
-                onModeSelected = { selectedMode = it },
-                player = player,
-                onPlayerSelected = { player = it },
-                minMap = minMap,
-                onMinMapChange = { if (it.length <= 3) minMap = it.filter(Char::isDigit) },
-                joinStyle = joinStyle,
-                onJoinStyleSelected = { joinStyle = it },
-                showAdvanced = showAdvanced,
-                onShowAdvancedChange = { showAdvanced = it },
-                primeGids = primeGids,
-                onPrimeGidsChange = { if (it.length <= 200) primeGids = it },
-                primeRounds = primeRounds,
-                onPrimeRoundsChange = { if (it.length <= 2) primeRounds = it.filter(Char::isDigit) },
-                primeStay = primeStay,
-                onPrimeStayChange = { if (it.length <= 2) primeStay = it.filter(Char::isDigit) }
-            )
-
-            // ═══════ 操作按钮 ═══════
-            if (isRunning) {
-                OutlinedButton(
-                    onClick = { viewModel.stop() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
+        // 未保存 GameID 的提示（跨版本更新：去设置重新添加）
+        if (!gameIdValid) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("■ 停止")
+                    Text(
+                        "该服务器未保存 GameID",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        "旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.startDiagnostic(buildConfig(effectiveGameId, selectedMode, player, minMap, joinStyle, primeGids, primeRounds, primeStay))
-                        },
-                        enabled = gameIdValid,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("只读诊断")
-                    }
-                    Button(
-                        onClick = { showConfirm = true },
-                        enabled = gameIdValid,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError
-                        )
-                    ) {
-                        Text("开始卡行动")
-                    }
-                }
-            }
-            if (!gameIdValid) {
-                Text(
-                    "GameID 需为 14 位数字（可在 GameTools / 服务器链接获取）",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
-        // ═══════ 下部：运行日志卡片（固定高度）═══════
+        ConfigCard(
+            expanded = configExpanded,
+            onExpandedChange = { configExpanded = it },
+            selectedMode = selectedMode,
+            onModeSelected = { selectedMode = it },
+            player = player,
+            onPlayerSelected = { player = it },
+            minMap = minMap,
+            onMinMapChange = { if (it.length <= 3) minMap = it.filter(Char::isDigit) },
+            joinStyle = joinStyle,
+            onJoinStyleSelected = { joinStyle = it },
+            showAdvanced = showAdvanced,
+            onShowAdvancedChange = { showAdvanced = it },
+            primeGids = primeGids,
+            onPrimeGidsChange = { if (it.length <= 200) primeGids = it },
+            primeRounds = primeRounds,
+            onPrimeRoundsChange = { if (it.length <= 2) primeRounds = it.filter(Char::isDigit) },
+            primeStay = primeStay,
+            onPrimeStayChange = { if (it.length <= 2) primeStay = it.filter(Char::isDigit) }
+        )
+
+        // ═══════ 操作按钮 ═══════
+        if (isRunning) {
+            OutlinedButton(
+                onClick = { viewModel.stop() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("■ 停止")
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.startDiagnostic(buildConfig(gameId.orEmpty(), selectedMode, player, minMap, joinStyle, primeGids, primeRounds, primeStay))
+                    },
+                    enabled = gameIdValid,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("只读诊断")
+                }
+                Button(
+                    onClick = { showConfirm = true },
+                    enabled = gameIdValid,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("开始卡行动")
+                }
+            }
+        }
+
+        // 运行日志卡片（与配置卡一样随页面滚动）
         LogSection(
             logs = logs,
             phase = phase,
             isRunning = isRunning,
-            modifier = Modifier.fillMaxWidth().height(220.dp)
+            modifier = Modifier.fillMaxWidth()
         )
     }
 
@@ -188,7 +188,7 @@ fun CardToolScreen(
                 Button(
                     onClick = {
                         showConfirm = false
-                        viewModel.startCard(buildConfig(effectiveGameId, selectedMode, player, minMap, joinStyle, primeGids, primeRounds, primeStay))
+                        viewModel.startCard(buildConfig(gameId.orEmpty(), selectedMode, player, minMap, joinStyle, primeGids, primeRounds, primeStay))
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
@@ -208,42 +208,6 @@ private fun EmptyHint(text: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-}
-
-// ═══════════════════════════════════════════════════
-// GameID 行
-// ═══════════════════════════════════════════════════
-
-@Composable
-private fun GameIdRow(
-    activeServer: com.bf1.admin.tool.data.local.entity.ServerEntity?,
-    gameIdInput: String,
-    gameIdValid: Boolean,
-    onGameIdChange: (String) -> Unit,
-    onSaveGameId: () -> Unit
-) {
-    OutlinedTextField(
-        value = gameIdInput,
-        onValueChange = onGameIdChange,
-        label = { Text("GameID (14位数字)") },
-        singleLine = true,
-        isError = gameIdInput.isNotEmpty() && gameIdInput.length == 14 && !gameIdValid,
-        trailingIcon = {
-            IconButton(onClick = onSaveGameId, enabled = gameIdValid) {
-                Icon(Icons.Default.Save, contentDescription = "保存 GameID")
-            }
-        },
-        supportingText = {
-            val serverId = activeServer?.serverId
-            val missing = activeServer?.gameId == null
-            Text(
-                if (missing && serverId != null) "ServerID: $serverId · 该服务器未保存 GameID，输入后点保存"
-                else if (serverId != null) "ServerID: $serverId"
-                else ""
-            )
-        },
-        modifier = Modifier.fillMaxWidth()
-    )
 }
 
 // ═══════════════════════════════════════════════════
@@ -399,7 +363,7 @@ private fun ConfigCard(
 }
 
 // ═══════════════════════════════════════════════════
-// 运行日志卡片
+// 运行日志卡片（随页面滚动，不固定）
 // ═══════════════════════════════════════════════════
 
 @Composable
@@ -437,12 +401,15 @@ private fun LogSection(
                 }
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            val listState = rememberLazyListState()
-            LaunchedEffect(logs.size) {
-                if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1)
-            }
-            LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
-                items(logs) { line ->
+            if (logs.isEmpty()) {
+                Text(
+                    "暂无日志",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                logs.forEach { line ->
                     Row(
                         verticalAlignment = Alignment.Top,
                         modifier = Modifier.padding(vertical = 2.dp)
