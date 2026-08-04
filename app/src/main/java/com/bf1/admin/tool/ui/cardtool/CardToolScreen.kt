@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Save
@@ -19,8 +20,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.widget.Toast
 import com.bf1.admin.tool.cardtool.CardToolConfig
 import com.bf1.admin.tool.cardtool.JoinStyle
 import com.bf1.admin.tool.cardtool.MODE_PRETTY_NAMES
@@ -420,6 +425,21 @@ private fun LogSection(
                 )
                 if (isRunning) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                }
+                val clipboard = LocalClipboardManager.current
+                val context = LocalContext.current
+                IconButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(logs.joinToString("\n")))
+                        Toast.makeText(context, "日志已复制", Toast.LENGTH_SHORT).show()
+                    },
+                    enabled = logs.isNotEmpty()
+                ) {
+                    Icon(
+                        Icons.Default.ContentCopy,
+                        contentDescription = "复制日志",
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
