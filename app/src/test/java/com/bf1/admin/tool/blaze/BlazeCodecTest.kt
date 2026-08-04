@@ -225,6 +225,47 @@ class BlazeCodecTest {
         assertEquals("3779779", (data["CMGD 3"] as Map<*, *>)["GVER 1"])
     }
 
+    /**
+     * 真实成功的 Blaze 登录响应（2026-08-04 实测抓包）：成功响应同样携带 ERRC 0 字段，
+     * 必须解析为成功而非错误（回归 CardTool.js 的真值判断）。
+     */
+    @Test
+    fun realLoginResultWithErrcZeroIsNotAnError() {
+        val packet = BlazeCodec.decode(hexToBytes(
+            "000000ce00500001000a0000012000008eed380000972ca30000b619320300ceb979013c303030303234363835306136666563655f2a75524f4143366673656d57463630415551423554375075516b614b413344366c243259413534424a4c0086ebee0000ce5cf303463bee00008b5a640088f0b9b4d23a9b2cf400009e5bc00001ae5e40013c303030303234363835306136666563655f2a75524f4143366673656d57463630415551423554375075516b614b413344366c243259413534424a4c00b2cbe700b8d48aa70db61a6c0112323734333938343938394071712e636f6d00c24d2c03933bad0109414344435f32313000b21cf40000c299000088f0b9b4d23ac2c8740004cf48730000e3296600889b85f0913b00d6990000889b85f0913b00cf086d0000d6e9320000"
+        ))
+        assertEquals("Authentication.login", packet.method)
+        assertEquals(BlazeCodec.TYPE_RESULT, packet.type)
+        assertEquals(1, packet.id)
+        assertNull(packet.error)
+        assertNull(packet.errc)
+        val data = packet.data!!
+        assertEquals(0L, data["ERRC 0"])
+        val sess = data["SESS 3"] as Map<*, *>
+        assertEquals(1007493266440L, sess["BUID 0"])
+        assertEquals("ACDC_210", (sess["PDTL 3"] as Map<*, *>)["DSNM 1"])
+    }
+
+    /**
+     * 真实 UserSessions.UserAuthenticated 通知（登录成功后服务器主动推送，id=0）：
+     * 同样带 ERRC 0，不应误判为错误。
+     */
+    @Test
+    fun realUserAuthenticatedMessageWithErrcZeroIsNotAnError() {
+        val packet = BlazeCodec.decode(hexToBytes(
+            "000000db0015780200080000004001008eed38008efbb78a8a9a12972ca30000b619320300463bee000086cbe3008e8dc2a60f8b5a640088f0b9b4d23a8e7a640982e00302bef1f4b9e7c406933bad0109414344435f323130009b2cf40000ae5e40013c303030303234363835306136666563655f2a75524f4143366673656d57463630415551423554375075516b614b413344366c243259413534424a4c00b21cf400b8d48aa70db2cbe700b5d68aa70db61a6c0112323734333938343938394071712e636f6d00ba1cf0010a63656d5f65615f696400c299000088f0b9b4d23ac2c8740004d6990000889b85f0913bd73d300000e3296600889b85f0913b"
+        ))
+        assertEquals("UserSessions.UserAuthenticated", packet.method)
+        assertEquals(BlazeCodec.TYPE_RECEIVE_MESSAGE, packet.type)
+        assertEquals(0, packet.id)
+        assertNull(packet.error)
+        assertNull(packet.errc)
+        val data = packet.data!!
+        assertEquals(0L, data["ERRC 0"])
+        assertEquals("ACDC_210", data["DSNM 1"])
+        assertEquals(1007493266440L, data["BUID 0"])
+    }
+
     // ═══════════ 整数边界 ═══════════
 
     @Test

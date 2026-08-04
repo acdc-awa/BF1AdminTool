@@ -223,7 +223,8 @@ object BlazeCodec {
         val (data, _) = parseStruct(buffer, HEADER_SIZE)
 
         val errc = data["ERRC 0"] as? Long
-        return if (errc != null) {
+        // 与 CardTool.js 一致：ERRC 为 0 表示无错误（成功的响应也带 ERRC 字段），仅非 0 才是错误
+        return if (errc != null && errc != 0L) {
             val errorComponentId = (errc and 0xFFFFL).toInt()
             var errorCode = (errc shr 16).toInt()
             if (errorCode >= 16384) errorCode -= 16384
