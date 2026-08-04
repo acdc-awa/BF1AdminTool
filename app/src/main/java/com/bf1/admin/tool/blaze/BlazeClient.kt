@@ -81,8 +81,12 @@ data class JoinResult(
  */
 class BlazeClient(
     private val socket: BlazeSocket,
-    private val requestTimeoutMs: Long = 15_000
+    private val requestTimeoutMs: Long = 15_000,
+    private val onDebug: ((String) -> Unit)? = null
 ) {
+    private fun debug(msg: String) {
+        onDebug?.invoke(msg)
+    }
     /** Authentication.login，返回 [BlazeLoginResult]。 */
     suspend fun login(authCode: String): BlazeLoginResult {
         val resp = send("Authentication.login", BlazePackets.login(authCode))
@@ -104,6 +108,8 @@ class BlazeClient(
         val nucleusId = (sess["UID  0"] as? Number)?.toLong() ?: 0L
         val connectionGroupId = BlazeParsing.connectionGroupIdFromLogin(data)
         val userExtendedData = lookupUserExtendedData(displayName)
+        debug("登录: displayName=$displayName personaId=$personaId nucleusId=$nucleusId cgid=$connectionGroupId")
+        debug("lookupUsers: userExtendedData=$userExtendedData")
         return BlazeLoginResult(
             displayName = displayName,
             personaId = personaId,
@@ -171,6 +177,10 @@ class BlazeClient(
             listOf(30722L, 2L, connectionGroupId)
         }
 
+        debug(
+            "joinGame: gameId=$gameId personaId=$personaId platformId=$platformId " +
+                "connectionGroup=$connectionGroup protocolVersion=$protocolVersion role=$role"
+        )
         val resp = try {
             send(
                 "GameManager.joinGame",
