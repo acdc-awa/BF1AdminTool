@@ -66,6 +66,7 @@ class CardToolService(
             val (host, port) = api.getBlazeServerAddress()
             onEvent(Event.Log("Blaze 服务器: $host:$port"))
 
+            onEvent(Event.Log("Blaze AuthCode 长度: ${blazeAuth.authCode.length}"))
             onEvent(Event.Log("连接 Blaze 并登录..."))
             val socket = BlazeSocket(host, port)
             try {

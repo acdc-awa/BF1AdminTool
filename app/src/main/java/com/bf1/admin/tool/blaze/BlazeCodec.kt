@@ -234,7 +234,7 @@ object BlazeCodec {
                 type = packetType,
                 id = packetId,
                 length = payloadLength,
-                error = BlazeError(compName, def?.name ?: errorCode.toString(), def?.description),
+                error = BlazeError(compName, def?.name ?: errorCode.toString(), def?.description, errc),
                 errc = errc,
                 data = null
             )
