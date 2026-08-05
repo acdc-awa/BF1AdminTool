@@ -1,6 +1,7 @@
 package com.bf1.admin.tool.data.repository
 
 import com.bf1.admin.tool.data.remote.EAApiService
+import com.bf1.admin.tool.data.remote.PersonaNotFoundException
 import com.bf1.admin.tool.data.remote.RotatedCookies
 
 class AdminRepository(
@@ -55,7 +56,27 @@ class AdminRepository(
     fun getAdminList(sessionId: String, serverId: String) =
         api.getAdminList(sessionId, serverId)
 
-    fun resolvePlayerName(playerName: String) = api.resolvePlayerNameGametools(playerName)
+    /**
+     * 玩家名 → PID：EA 原生查询优先，非「玩家不存在」类失败兜底 gametools。
+     * 需要当前账号的 remid/sid（getAccessToken 用）；EA 查询产生的轮换 cookie 落库。
+     */
+    suspend fun resolvePlayerName(playerName: String): PlayerResolveResult {
+        val account = accountRepo.getActiveEncrypted() ?: throw Exception("请先登录账号")
+        return try {
+            val result = api.resolvePlayerNameByEAID(account.remid, account.sid, playerName)
+            persistRotation(account.id, account.remid, account.sid, result.rotated)
+            PlayerResolveResult(result.personaId, PlayerResolveSource.EA)
+        } catch (e: PersonaNotFoundException) {
+            // 查无此人：gametools 也查不到，不兜底，直接报错
+            throw e
+        } catch (e: Exception) {
+            // 凭证过期 / insufficient_scope / 网络等：兜底 gametools
+            PlayerResolveResult(
+                api.resolvePlayerNameGametools(playerName),
+                PlayerResolveSource.GAMETOOLS
+            )
+        }
+    }
 
     fun addAdmin(sessionId: String, serverId: String, personaId: String) =
         api.addAdmin(sessionId, serverId, personaId)
@@ -65,3 +86,7 @@ class AdminRepository(
 
     fun getWelcomeMessage(sessionId: String) = api.getWelcomeMessage(sessionId)
 }
+
+enum class PlayerResolveSource { EA, GAMETOOLS }
+
+data class PlayerResolveResult(val personaId: String, val source: PlayerResolveSource)
