@@ -44,7 +44,13 @@ internal fun buildPcSign(secretVersion: String, ts: String): String {
 
     val midSource = boardManufacturer + boardSerial + biosManufacturer + biosSerial +
         osInstallDate + osSerial
-    val mid = fnv1a64(midSource.toByteArray(StandardCharsets.UTF_8)).toString()
+    // mid 有线文本必须是无符号十进制（"14598647573862213349"）：参考实现 Python
+    // str(fnv1a64(...))（无符号 int）与 C# EAappEmulater（ulong.ToString()）均为无符号；
+    // Kotlin 的 Long.toString() 会输出有符号负数，与两个参考都逐字节不一致，故用
+    // Long.toUnsignedString（Java 8 / API 24 起可用，minSdk 26 满足）。
+    val mid = java.lang.Long.toUnsignedString(
+        fnv1a64(midSource.toByteArray(StandardCharsets.UTF_8))
+    )
 
     // System.Text.Json 默认紧凑输出、保持插入顺序 —— 手动拼 JSON 与之等价
     val payloadJson = """{"av":"v1","bsn":"$biosSerial","gid":$gpuId,"hsn":"$diskSerial","mid":"$mid","msn":"$boardSerial","sv":"$secretVersion","ts":"$ts"}"""

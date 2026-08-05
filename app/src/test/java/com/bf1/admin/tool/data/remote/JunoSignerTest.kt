@@ -33,8 +33,10 @@ class JunoSignerTest {
         val (payload, sig) = sign.split(".")
         // payload 是 base64url 的 JSON，含 av/bsn/gid/hsn/mid/msn/sv/ts；
         // 先解码再断言字段（base64 输出本身不含可读字段名）
-        val decoded = Base64.getUrlDecoder().decode(payload)
-        assertTrue(String(decoded, StandardCharsets.UTF_8).contains("av"))
+        val decoded = String(Base64.getUrlDecoder().decode(payload), StandardCharsets.UTF_8)
+        assertTrue(decoded.contains("av"))
+        // mid 有线文本必须是无符号十进制（对齐 Python/C# 参考），防止回归为有符号负数
+        assertTrue(decoded.contains("14598647573862213349"))
         // 签名可用 v1 密钥重算验证
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec("ISa3dpGOc8wW7Adn4auACSQmaccrOyR2".toByteArray(), "HmacSHA256"))
