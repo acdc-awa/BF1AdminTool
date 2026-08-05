@@ -84,4 +84,6 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
+    // 本地单测需真实 org.json（android.jar 中为 stub，"not mocked"）
+    testImplementation(libs.org.json)
 }
