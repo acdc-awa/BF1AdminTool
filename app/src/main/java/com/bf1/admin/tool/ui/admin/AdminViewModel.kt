@@ -7,6 +7,7 @@ import com.bf1.admin.tool.BF1AdminApp
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.remote.EAApiService
+import com.bf1.admin.tool.data.repository.PlayerResolveSource
 import com.bf1.admin.tool.data.repository.ServerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -152,18 +153,22 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 val results = mutableListOf<String>()
                 for (player in players) {
                     try {
-                        val personaId = if (player.startsWith("#")) {
-                            player.removePrefix("#")
-                        } else {
-                            withContext(Dispatchers.IO) { adminRepo.resolvePlayerName(player) }
-                        }
+                        val isDirect = player.startsWith("#")
+                        val resolve = if (isDirect) null
+                        else withContext(Dispatchers.IO) { adminRepo.resolvePlayerName(player) }
+                        val personaId = resolve?.personaId ?: player.removePrefix("#")
                         withSessionRetry { sessionId ->
                             withContext(Dispatchers.IO) {
                                 if (isAdd) adminRepo.addAdmin(sessionId, server.serverId, personaId)
                                 else adminRepo.removeAdmin(sessionId, server.serverId, personaId)
                             }
                         }
-                        results.add("$player: 成功")
+                        val source = when {
+                            isDirect -> ""
+                            resolve?.source == PlayerResolveSource.EA -> " (EA)"
+                            else -> " (gametools)"
+                        }
+                        results.add("$player: 成功$source")
                     } catch (e: Exception) {
                         results.add("$player: 失败 (${e.message})")
                     }
