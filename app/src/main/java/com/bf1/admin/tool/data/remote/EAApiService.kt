@@ -3,6 +3,7 @@ package com.bf1.admin.tool.data.remote
 import com.bf1.admin.tool.cardtool.RspInfo
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -40,6 +41,10 @@ class EAApiService {
     )
     data class RefreshResult(val sessionId: String, val rotated: RotatedCookies)
     data class AdminInfo(val personaId: String, val displayName: String, val avatar: String)
+    data class EaPidResult(val personaId: String, val rotated: RotatedCookies)
+
+    /** ORIGIN token 缺少 dp.server.default scope（脚本中触发 Juno 回退的 403）。 */
+    class InsufficientScopeException(message: String) : Exception(message)
 
     /**
      * remid/sid 凭证已过期，需要用户重新登录。
@@ -126,6 +131,42 @@ class EAApiService {
             return json.optString("access_token", "").ifEmpty {
                 throw Exception("No access_token in response: $body")
             }
+        }
+    }
+
+    /**
+     * EA 原生查 PID：remid/sid → access_token → gateway personas（按 displayName）。
+     *
+     * 脚本 eaid_to_pid.py 的 ORIGIN 路径；403 insufficient_scope 时抛
+     * [InsufficientScopeException]（本轮不移植 Juno 回退，由上层兜底 gametools）。
+     */
+    fun resolvePlayerNameByEAID(remid: String, sid: String, eaid: String): EaPidResult {
+        val cookies = CookieCollector()
+        val cookieHeader = "remid=$remid; sid=$sid"
+        val accessToken = getAccessToken(cookieHeader, cookies)
+
+        val url = "https://gateway.ea.com/proxy/identity/personas".toHttpUrl()
+            .newBuilder()
+            .addQueryParameter("namespaceName", "cem_ea_id")
+            .addQueryParameter("displayName", eaid)
+            .build()
+        val request = Request.Builder().url(url)
+            .header("Accept", "application/json")
+            .header("X-Expand-Results", "true")
+            .header("Authorization", "Bearer $accessToken")
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            cookies.absorb(response)
+            val body = response.body?.string()
+                ?: throw Exception("Empty response getting personas")
+            if (!response.isSuccessful) {
+                if (isInsufficientScope(response.code, body)) {
+                    throw InsufficientScopeException("ORIGIN token 缺少 scope (HTTP ${response.code})")
+                }
+                throw Exception("personas 请求失败: HTTP ${response.code}: $body")
+            }
+            return EaPidResult(parsePersonaId(JSONObject(body)), cookies.rotated)
         }
     }
 
@@ -359,7 +400,8 @@ class EAApiService {
         }
     }
 
-    fun resolvePlayerName(playerName: String): String {
+    /** gametools 兜底查 PID：EA 原生查询（[resolvePlayerNameByEAID]）失败时使用。 */
+    fun resolvePlayerNameGametools(playerName: String): String {
         val url = "https://api.gametools.network/bf1/player/?name=$playerName"
         val request = Request.Builder().url(url).build()
 
@@ -405,3 +447,7 @@ class EAApiService {
         }
     }
 }
+
+/** EA gateway personas 请求是否因 ORIGIN token scope 不足而 403。 */
+internal fun isInsufficientScope(code: Int, body: String): Boolean =
+    code == 403 && body.contains("insufficient_scope")
