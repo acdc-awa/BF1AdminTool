@@ -1,0 +1,46 @@
+package com.bf1.admin.tool.data.remote
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+class JunoSignerTest {
+
+    @Test
+    fun fnv1a64MatchesPythonGolden() {
+        // golden 由 eaid_to_pid.py 实测生成：
+        // mid_source = "Microsoft CorporationNoneMicrosoft CorporationNone1970-01-0100:00:00.000000000+0000None"
+        // Python fnv1a64 = 14598647573862213349（无符号），同一 64 位哈希在 Kotlin 中是有符号 Long：-3848096499847338267L
+        assertEquals(
+            -3848096499847338267L,
+            fnv1a64("Microsoft CorporationNoneMicrosoft CorporationNone1970-01-0100:00:00.000000000+0000None".toByteArray())
+        )
+    }
+
+    @Test
+    fun b64urlEncodesWithoutPadding() {
+        assertEquals("", b64url(ByteArray(0)))
+        assertEquals("aGVsbG8", b64url("hello".toByteArray()))
+    }
+
+    @Test
+    fun buildPcSignPayloadVerifies() {
+        val sign = buildPcSign("v1", "2026-08-05 00:00:00:000")
+        val (payload, sig) = sign.split(".")
+        // payload 是 base64url 的 JSON，含 av/bsn/gid/hsn/mid/msn/sv/ts；
+        // 先解码再断言字段（base64 输出本身不含可读字段名）
+        val decoded = Base64.getUrlDecoder().decode(payload)
+        assertTrue(String(decoded, StandardCharsets.UTF_8).contains("av"))
+        // 签名可用 v1 密钥重算验证
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec("ISa3dpGOc8wW7Adn4auACSQmaccrOyR2".toByteArray(), "HmacSHA256"))
+        assertEquals(
+            Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(payload.toByteArray())),
+            sig
+        )
+    }
+}

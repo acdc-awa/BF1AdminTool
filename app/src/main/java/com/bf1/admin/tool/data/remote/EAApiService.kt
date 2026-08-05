@@ -3,12 +3,20 @@ package com.bf1.admin.tool.data.remote
 import com.bf1.admin.tool.cardtool.RspInfo
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -17,6 +25,13 @@ class EAApiService {
         private const val API_URL = "https://sparta-gw.battlelog.com/jsonrpc/pc/api"
         private const val CLIENT_VERSION = "release-bf1-lsu35_26385_ad7bf56a_tunguska_all_prod"
         private const val DB_ID = "Tunguska.Shipping2PC.Win32"
+
+        // ---- EA app (Juno) 认证参数，复刻 EAappEmulater / eaid_to_pid.py ----
+        private const val JUNO_TOKEN_ENDPOINT = "https://accounts.ea.com/connect/token"
+        private const val JUNO_CLIENT_ID = "JUNO_PC_CLIENT"
+        private const val JUNO_CLIENT_SECRET =
+            "4mRLtYMb6vq9qglomWEaT4ChxsXWcyqbQpuBNfMPOYOiDmYYQmjuaBsF2Zp0RyVeWkfqhE9TuGgAw7te"
+        private const val JUNO_REDIRECT_URI = "qrc:///html/login_successful.html"
     }
 
     private val client = OkHttpClient.Builder()
@@ -135,16 +150,104 @@ class EAApiService {
     }
 
     /**
+     * Juno（EA app）OAuth 完整流程：PKCE + pc_sign 授权 → code → token 交换。
+     * ORIGIN token 缺 dp.server.default scope（403 insufficient_scope）时自动调用。
+     */
+    private fun getAccessTokenJuno(remid: String, sid: String, cookies: CookieCollector): String {
+        val random = SecureRandom()
+        val codeVerifier = b64url(ByteArray(32).also { random.nextBytes(it) })
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(codeVerifier.toByteArray(StandardCharsets.US_ASCII))
+        val codeChallenge = b64url(digest)
+        val nonce = ByteBuffer.wrap(ByteArray(4).also { random.nextBytes(it) }).int.toString()
+        val ts = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss:SSS")
+            .withZone(ZoneOffset.UTC).format(Instant.now())
+        val pcSign = buildPcSign(if (random.nextBoolean()) "v1" else "v2", ts)
+
+        val authUrl = "https://accounts.ea.com/connect/auth".toHttpUrl().newBuilder()
+            .addQueryParameter("client_id", JUNO_CLIENT_ID)
+            .addQueryParameter("sbiod_enabled", "false")
+            .addQueryParameter("response_type", "code")
+            .addQueryParameter("locale", "en_US")
+            .addQueryParameter("pc_sign", pcSign)
+            .addQueryParameter("nonce", nonce)
+            .addQueryParameter("code_challenge_method", "S256")
+            .addQueryParameter("code_challenge", codeChallenge)
+            .build()
+
+        val authRequest = Request.Builder().url(authUrl)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36")
+            .header("Cookie", "remid=$remid; sid=$sid")
+            .build()
+
+        client.newCall(authRequest).execute().use { response ->
+            cookies.absorb(response)
+            val location = response.header("Location")
+            val isRedirect = response.code in 301..308
+            if (!isRedirect || location == null || !location.contains("login_successful.html")) {
+                throw Exception("Juno 授权未成功: HTTP ${response.code}, Location=$location")
+            }
+            // qrc:/// 是自定义 scheme，不走 HttpUrl 解析；且与 getAuthCode 的取法保持一致
+            val callback = if ('#' in location) location.replaceFirst('#', '&') else location
+            if (callback.contains("error=")) throw Exception("Juno 授权返回错误: $callback")
+            val code = callback.substringAfter("code=", "").substringBefore("&")
+            if (code.isEmpty()) throw Exception("Juno 回调里没有 code: $location")
+
+            val tokenBody = FormBody.Builder()
+                .add("grant_type", "authorization_code")
+                .add("code", code)
+                .add("code_verifier", codeVerifier)
+                .add("client_id", JUNO_CLIENT_ID)
+                .add("client_secret", JUNO_CLIENT_SECRET)
+                .add("redirect_uri", JUNO_REDIRECT_URI)
+                .add("token_format", "JWS")
+                .build()
+            val tokenRequest = Request.Builder().url(JUNO_TOKEN_ENDPOINT)
+                .header("User-Agent", "EAApp/13.0 (Windows)")
+                .post(tokenBody)
+                .build()
+
+            client.newCall(tokenRequest).execute().use { tokenResponse ->
+                cookies.absorb(tokenResponse)
+                val tokenBodyStr = tokenResponse.body?.string()
+                    ?: throw Exception("Empty response exchanging juno token")
+                if (tokenResponse.code != 200) {
+                    throw Exception("Juno token 交换失败: HTTP ${tokenResponse.code}: $tokenBodyStr")
+                }
+                return JSONObject(tokenBodyStr).optString("access_token", "").ifEmpty {
+                    throw Exception("Juno token 响应没有 access_token: $tokenBodyStr")
+                }
+            }
+        }
+    }
+
+    /**
      * EA 原生查 PID：remid/sid → access_token → gateway personas（按 displayName）。
      *
-     * 脚本 eaid_to_pid.py 的 ORIGIN 路径；403 insufficient_scope 时抛
-     * [InsufficientScopeException]（本轮不移植 Juno 回退，由上层兜底 gametools）。
+     * 脚本 eaid_to_pid.py 的 ORIGIN 路径；ORIGIN token 缺 dp.server.default scope
+     * （403 insufficient_scope，实测恒定触发）时自动换 Juno（EA app）token 重试一次，
+     * 仍失败则抛异常，由上层兜底 gametools。
      */
     fun resolvePlayerNameByEAID(remid: String, sid: String, eaid: String): EaPidResult {
         val cookies = CookieCollector()
         val cookieHeader = "remid=$remid; sid=$sid"
         val accessToken = getAccessToken(cookieHeader, cookies)
+        return try {
+            queryPersonas(accessToken, eaid, cookies)
+        } catch (e: InsufficientScopeException) {
+            // ORIGIN token 缺 dp.server.default scope（实测恒定触发）：换 Juno token 重试一次
+            val junoToken = getAccessTokenJuno(remid, sid, cookies)
+            queryPersonas(junoToken, eaid, cookies)
+        }
+    }
 
+    /**
+     * gateway personas 查询（按 displayName）。403 insufficient_scope（ORIGIN token
+     * 缺 dp.server.default scope）时抛 [InsufficientScopeException]，由
+     * [resolvePlayerNameByEAID] 换 Juno token 重试一次。
+     */
+    private fun queryPersonas(accessToken: String, eaid: String, cookies: CookieCollector): EaPidResult {
         val url = "https://gateway.ea.com/proxy/identity/personas".toHttpUrl()
             .newBuilder()
             .addQueryParameter("namespaceName", "cem_ea_id")
