@@ -55,7 +55,7 @@ class AdminRepository(
     fun getAdminList(sessionId: String, serverId: String) =
         api.getAdminList(sessionId, serverId)
 
-    fun resolvePlayerName(playerName: String) = api.resolvePlayerName(playerName)
+    fun resolvePlayerName(playerName: String) = api.resolvePlayerNameGametools(playerName)
 
     fun addAdmin(sessionId: String, serverId: String, personaId: String) =
         api.addAdmin(sessionId, serverId, personaId)
