@@ -58,6 +58,17 @@ class EAApiService {
     data class AdminInfo(val personaId: String, val displayName: String, val avatar: String)
     data class EaPidResult(val personaId: String, val rotated: RotatedCookies)
 
+    /**
+     * EA 原生查 PID 失败（含 Juno 重试失败），携带本轮累积的轮换 cookie。
+     * 403 insufficient_scope 恒定触发，Juno 重试失败时若丢弃轮换，连续失败会让旧凭证
+     * 逐渐失效；上层兜底 gametools 前应先 persistRotation 落库。
+     */
+    class EaPidQueryException(
+        message: String,
+        cause: Throwable?,
+        val rotated: RotatedCookies
+    ) : Exception(message, cause)
+
     /** ORIGIN token 缺少 dp.server.default scope（脚本中触发 Juno 回退的 403）。 */
     class InsufficientScopeException(message: String) : Exception(message)
 
@@ -237,8 +248,18 @@ class EAApiService {
             queryPersonas(accessToken, eaid, cookies)
         } catch (e: InsufficientScopeException) {
             // ORIGIN token 缺 dp.server.default scope（实测恒定触发）：换 Juno token 重试一次
-            val junoToken = getAccessTokenJuno(remid, sid, cookies)
-            queryPersonas(junoToken, eaid, cookies)
+            try {
+                val junoToken = getAccessTokenJuno(remid, sid, cookies)
+                return queryPersonas(junoToken, eaid, cookies)
+            } catch (e2: Exception) {
+                // Juno 重试失败：不归因 ORIGIN（e2 才是真实异常，可能恰是 Juno token 也缺
+                // scope），且把本轮累积的轮换 cookie 带出去，避免 403 恒定场景下每次失败丢一次轮换
+                throw EaPidQueryException(
+                    "EA 原生查询失败（ORIGIN 403 后 Juno 重试也失败）: ${e2.message}",
+                    e2,
+                    cookies.rotated
+                )
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.bf1.admin.tool.data.repository
 
 import com.bf1.admin.tool.data.remote.EAApiService
+import com.bf1.admin.tool.data.remote.EAApiService.EaPidQueryException
 import com.bf1.admin.tool.data.remote.PersonaNotFoundException
 import com.bf1.admin.tool.data.remote.RotatedCookies
 
@@ -71,6 +72,15 @@ class AdminRepository(
             throw e
         } catch (e: Exception) {
             // 凭证过期 / insufficient_scope / 网络等：兜底 gametools
+            // 轮换 cookie 不随失败丢弃（403 恒定场景下每次失败都丢一次轮换）；
+            // try/catch 而非 runCatching：其 lambda 非 suspend，不能调用挂起的 persistRotation
+            try {
+                (e as? EaPidQueryException)?.let {
+                    persistRotation(account.id, account.remid, account.sid, it.rotated)
+                }
+            } catch (_: Exception) {
+                // 落库失败仅丢弃本轮轮换，不影响 gametools 兜底
+            }
             PlayerResolveResult(
                 api.resolvePlayerNameGametools(playerName),
                 PlayerResolveSource.GAMETOOLS

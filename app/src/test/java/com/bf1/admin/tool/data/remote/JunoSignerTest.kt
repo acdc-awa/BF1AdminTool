@@ -45,4 +45,14 @@ class JunoSignerTest {
             sig
         )
     }
+
+    @Test
+    fun buildPcSignMatchesPythonGolden() {
+        // 完整 "payload.signature" 由 eaid_to_pid.py 以固定 ts / v1 实测生成；
+        // mid 为无符号十进制（14598647573862213349），断言与参考实现逐字节一致
+        assertEquals(
+            "eyJhdiI6InYxIiwiYnNuIjoiTm9uZSIsImdpZCI6MCwiaHNuIjoiTm9uZSIsIm1pZCI6IjE0NTk4NjQ3NTczODYyMjEzMzQ5IiwibXNuIjoiTm9uZSIsInN2IjoidjEiLCJ0cyI6IjIwMjYtMDgtMDUgMDA6MDA6MDA6MDAwIn0.j4uCmBLgWDmAduuo8lwxaMkXA-Rasyy1iIlQ-nG_UHI",
+            buildPcSign("v1", "2026-08-05 00:00:00:000")
+        )
+    }
 }
