@@ -36,3 +36,13 @@ internal fun accumulateRotatedCookies(
     }
     return RotatedCookies(remid, sid)
 }
+
+/**
+ * 增量落库取值：只覆盖本次确实轮换出的字段，null 字段沿用库里现值。
+ * 与 accumulateRotatedCookies 同原则 —— 丢一次轮换就离"账号失效需重新登录"更近一步。
+ */
+internal fun mergeRotatedPersist(
+    existingRemid: String,
+    existingSid: String,
+    rotated: RotatedCookies
+): Pair<String, String> = (rotated.remid ?: existingRemid) to (rotated.sid ?: existingSid)
