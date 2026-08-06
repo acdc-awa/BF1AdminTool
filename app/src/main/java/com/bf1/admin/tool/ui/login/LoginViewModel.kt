@@ -19,7 +19,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as BF1AdminApp
     private val accountRepo = app.accountRepository
     private val adminRepo = app.adminRepository
-    private val sessionManager = app.sessionManager
+    private val credentialManager = app.credentialManager
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -47,7 +47,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     sid = effectiveSid
                 )
                 accountRepo.switchActive(accountId)
-                sessionManager.recordSession(accountId, effectiveRemid, session.sessionId)
+                credentialManager.recordSession(accountId, effectiveRemid, session.sessionId)
                 _message.emit("登录成功: ${session.persona.displayName}")
                 _loginSuccess.emit(Unit)
             } catch (e: Exception) {

@@ -20,7 +20,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val accountRepo = app.accountRepository
     private val serverRepo = ServerRepository(db.serverDao())
     private val adminRepo = app.adminRepository
-    private val sessionManager = app.sessionManager
+    private val credentialManager = app.credentialManager
 
     val accounts: StateFlow<List<AccountEntity>> = accountRepo.allAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -253,7 +253,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 // 验证过程中 EA 可能已轮换 cookie，落库到本账号并同步 UI 显示。
                 adminRepo.persistRotation(account.id, remid, sid, session.rotated)
-                sessionManager.recordSession(
+                credentialManager.recordSession(
                     account.id, session.rotated.remid ?: remid, session.sessionId
                 )
                 loadDecryptedCredentials()
@@ -282,7 +282,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             _lookupServerId.value = null
             _lookupError.value = null
             try {
-                val rsp = sessionManager.withActiveSession { sessionId ->
+                val rsp = credentialManager.withActiveSession { sessionId ->
                     withContext(Dispatchers.IO) {
                         adminRepo.getFullServerDetails(sessionId, gameId)
                     }
@@ -309,7 +309,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val rsp = sessionManager.withActiveSession { sessionId ->
+                val rsp = credentialManager.withActiveSession { sessionId ->
                     withContext(Dispatchers.IO) {
                         adminRepo.getFullServerDetails(sessionId, gameId)
                     }
@@ -341,17 +341,17 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ═══════════════════════════════════════════════════
-    // Session 管理由 BattlelogSessionManager 统一处理。
+    // Session 管理由 CredentialManager 统一处理。
     // ═══════════════════════════════════════════════════
 
     /**
      * 初始化 / 切换账号时验证凭证并获取 session。
-     * 统一缓存由 BattlelogSessionManager 管理，这里仅触发一次确保有效性。
+     * 统一缓存由 CredentialManager 管理，这里仅触发一次确保有效性。
      */
     private suspend fun initSession(account: AccountEntity) {
         try {
             // 仅验证 session 有效性
-            withContext(Dispatchers.IO) { sessionManager.getActiveSessionId() }
+            withContext(Dispatchers.IO) { credentialManager.getActiveSessionId() }
         } catch (e: EAApiService.CredentialsExpiredException) {
             _expiredAccount.value = account
         } catch (e: Exception) {
@@ -367,7 +367,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun <T> withSessionRetry(block: suspend (sessionId: String) -> T): T {
         try {
-            return sessionManager.withActiveSession(block)
+            return credentialManager.withActiveSession(block)
         } catch (ce: EAApiService.CredentialsExpiredException) {
             _expiredAccount.value = _activeAccount.value
             throw ce

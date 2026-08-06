@@ -6,7 +6,6 @@ import com.bf1.admin.tool.data.remote.CardToolApiService
 import com.bf1.admin.tool.data.remote.EAApiService
 import com.bf1.admin.tool.data.repository.AccountRepository
 import com.bf1.admin.tool.data.repository.AdminRepository
-import com.bf1.admin.tool.data.session.BattlelogSessionManager
 import com.bf1.admin.tool.data.session.CredentialManager
 import com.bf1.admin.tool.data.session.SessionRefreshScheduler
 
@@ -36,15 +35,6 @@ class BF1AdminApp : Application() {
             sessionCacheDao = database.sessionCacheDao(),
             eaApi = eaApiService,
             cardToolApi = cardToolApiService
-        )
-    }
-
-    val sessionManager: BattlelogSessionManager by lazy {
-        BattlelogSessionManager(
-            context = this,
-            accountRepository = accountRepository,
-            sessionCacheDao = database.sessionCacheDao(),
-            adminRepository = adminRepository
         )
     }
 
