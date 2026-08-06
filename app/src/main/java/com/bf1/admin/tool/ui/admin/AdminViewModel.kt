@@ -7,8 +7,8 @@ import com.bf1.admin.tool.BF1AdminApp
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.remote.EAApiService
-import com.bf1.admin.tool.data.repository.PlayerResolveSource
 import com.bf1.admin.tool.data.repository.ServerRepository
+import com.bf1.admin.tool.data.session.PlayerResolveSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -155,7 +155,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         val isDirect = player.startsWith("#")
                         val resolve = if (isDirect) null
-                        else withContext(Dispatchers.IO) { adminRepo.resolvePlayerName(player) }
+                        else withContext(Dispatchers.IO) { credentialManager.resolvePlayerName(player) }
                         val personaId = resolve?.personaId ?: player.removePrefix("#")
                         withSessionRetry { sessionId ->
                             withContext(Dispatchers.IO) {
@@ -247,19 +247,15 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             isSaving = true
             try {
                 val account = _activeAccount.value ?: throw Exception("无活跃账号")
-                accountRepo.updateCredentials(account.id, remid, sid)
-                val session = withContext(Dispatchers.IO) {
-                    adminRepo.authenticate(remid, sid).getOrThrow()
+                // 先验证后保存：兑换 + 轮换落库 + 记 session 在 CredentialManager
+                // 锁内原子完成，验证失败不覆盖现有有效凭证。
+                withContext(Dispatchers.IO) {
+                    credentialManager.authenticate(remid, sid, account.id).getOrThrow()
                 }
-                // 验证过程中 EA 可能已轮换 cookie，落库到本账号并同步 UI 显示。
-                adminRepo.persistRotation(account.id, remid, sid, session.rotated)
-                credentialManager.recordSession(
-                    account.id, session.rotated.remid ?: remid, session.sessionId
-                )
                 loadDecryptedCredentials()
                 _message.emit("保存成功，验证通过")
             } catch (e: Exception) {
-                _message.emit("验证失败，已保存但凭证可能已失效: ${e.message}")
+                _message.emit("验证失败，凭证未修改: ${e.message}")
             } finally {
                 isSaving = false
             }

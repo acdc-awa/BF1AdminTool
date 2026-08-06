@@ -24,7 +24,7 @@ class BF1AdminApp : Application() {
     val cardToolApiService: CardToolApiService by lazy { CardToolApiService() }
 
     val adminRepository: AdminRepository by lazy {
-        AdminRepository(accountRepository, eaApiService)
+        AdminRepository(eaApiService)
     }
 
     /** 单一凭证生产者：所有 remid/sid 兑换与轮换落库的唯一入口。 */
