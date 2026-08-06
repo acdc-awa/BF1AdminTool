@@ -165,7 +165,7 @@ fun CardToolScreen(
                     enabled = gameIdValid,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("只读诊断")
+                    Text("验证账号")
                 }
                 Button(
                     onClick = { showConfirm = true },
@@ -197,7 +197,7 @@ fun CardToolScreen(
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             title = { Text("开始卡行动") },
-            text = { Text("将修改服务器轮换并占位进服，确认开始？") },
+            text = { Text("确认开始？") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -327,7 +327,7 @@ private fun ConfigCard(
 
                     // 高级选项（预热）
                     TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }, enabled = enabled) {
-                        Text(if (showAdvanced) "收起高级选项" else "高级选项（预热）")
+                        Text(if (showAdvanced) "收起高级选项" else "高级选项")
                         Icon(
                             if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                             contentDescription = null
@@ -339,7 +339,7 @@ private fun ConfigCard(
                                 value = primeGids,
                                 onValueChange = onPrimeGidsChange,
                                 enabled = enabled,
-                                label = { Text("暖服 GameID（逗号分隔，可多个）") },
+                                label = { Text("预设服 GameID（逗号分隔，可多个）") },
                                 minLines = 2,
                                 modifier = Modifier.fillMaxWidth()
                             )
