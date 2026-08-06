@@ -37,7 +37,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
     private val app = application as BF1AdminApp
     private val accountRepo = app.accountRepository
     private val serverRepo = ServerRepository(app.database.serverDao())
-    private val service = CardToolService(accountRepo)
+    private val service = CardToolService(app.credentialManager, app.cardToolApiService)
 
     val accounts: StateFlow<List<AccountEntity>> = accountRepo.allAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
