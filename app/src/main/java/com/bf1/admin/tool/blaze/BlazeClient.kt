@@ -96,10 +96,16 @@ data class JoinResult(
 class BlazeClient(
     private val socket: BlazeSocket,
     private val requestTimeoutMs: Long = 15_000,
-    private val onDebug: ((String) -> Unit)? = null
+    private val onDebug: ((String) -> Unit)? = null,
+    private val onDebugError: ((String) -> Unit)? = null
 ) {
     private fun debug(msg: String) {
         onDebug?.invoke(msg)
+    }
+
+    /** 错误诊断通道（B3/B4）：仅错误/解析失败时输出，对排障有用，应转发给 UI。 */
+    private fun debugError(msg: String) {
+        onDebugError?.invoke(msg)
     }
     /** Authentication.login，返回 [BlazeLoginResult]。 */
     suspend fun login(authCode: String): BlazeLoginResult {
@@ -137,12 +143,12 @@ class BlazeClient(
     private suspend fun lookupUserExtendedData(displayName: String): List<Long>? {
         val resp = send("30722.50", BlazePackets.lookupUsers(displayName))
         if (resp.error != null) {
-            debug("lookupUsers 错误: ${resp.error.message} (component=${resp.error.component} errc=0x${resp.errc?.toString(16)})")
+            debugError("lookupUsers 错误: ${resp.error.message} (component=${resp.error.component} errc=0x${resp.errc?.toString(16)})")
             return null
         }
         val ued = BlazeParsing.parseUserExtendedData(resp.data)
         if (ued == null) {
-            debug("lookupUsers 解析失败: keys=${resp.data?.keys}")
+            debugError("lookupUsers 解析失败: keys=${resp.data?.keys}")
         }
         return ued
     }
