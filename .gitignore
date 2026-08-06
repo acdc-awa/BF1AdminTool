@@ -19,6 +19,7 @@ build/
 local.properties
 app/release/
 .references/
+.tools/
 
 # Claude Code
 .claude/
