@@ -3,12 +3,15 @@
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Warning
@@ -17,10 +20,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bf1.admin.tool.cardtool.CardToolConfig
 import com.bf1.admin.tool.cardtool.JoinStyle
@@ -45,6 +53,7 @@ fun CardToolScreen(
     val logs by viewModel.logs.collectAsState()
     val phase by viewModel.phase.collectAsState()
     val isRunning by viewModel.isRunning.collectAsState()
+    val lastResult by viewModel.lastResult.collectAsState()
 
     // ── 配置状态 ──
     var selectedMode by rememberSaveable { mutableIntStateOf(0x2) }
@@ -71,10 +80,13 @@ fun CardToolScreen(
     val gameId = activeServer?.gameId
     val gameIdValid = gameId?.length == 14
 
-    // 整页滚动，新日志到达时滚到底部
+    // 整页滚动，新日志到达时滚到底部；用户手动上滑翻阅（距底部 > 120dp）时暂停跟随
     val scrollState = rememberScrollState()
+    val followThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
     LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) scrollState.animateScrollTo(scrollState.maxValue)
+        if (logs.isNotEmpty() && scrollState.value >= scrollState.maxValue - followThresholdPx) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
     }
 
     Column(
@@ -174,6 +186,8 @@ fun CardToolScreen(
             logs = logs,
             phase = phase,
             isRunning = isRunning,
+            lastResult = lastResult,
+            onClear = { viewModel.clearLogs() },
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -371,8 +385,12 @@ private fun LogSection(
     logs: List<CardToolViewModel.LogLine>,
     phase: String?,
     isRunning: Boolean,
+    lastResult: CardToolViewModel.ResultSummary?,
+    onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val timeFmt = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val successColor = if (isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF2E7D32)
     Card(modifier = modifier) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,7 +406,11 @@ private fun LogSection(
                 val context = LocalContext.current
                 IconButton(
                     onClick = {
-                        clipboard.setText(AnnotatedString(logs.joinToString("\n")))
+                        clipboard.setText(
+                            AnnotatedString(
+                                logs.joinToString("\n") { "${timeFmt.format(Date(it.timestamp))} ${it.text}" }
+                            )
+                        )
                         Toast.makeText(context, "日志已复制", Toast.LENGTH_SHORT).show()
                     },
                     enabled = logs.isNotEmpty()
@@ -397,6 +419,36 @@ private fun LogSection(
                         Icons.Default.ContentCopy,
                         contentDescription = "复制日志",
                         modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onClear,
+                    enabled = logs.isNotEmpty()
+                ) {
+                    Icon(
+                        Icons.Default.DeleteSweep,
+                        contentDescription = "清空日志",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            // 结果高亮条：执行结束后的成功/失败摘要
+            lastResult?.let { r ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Icon(
+                        if (r.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                        contentDescription = null,
+                        tint = if (r.success) successColor else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        (if (r.success) "完成: " else "失败: ") + r.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (r.success) successColor else MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -422,7 +474,7 @@ private fun LogSection(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            line.text,
+                            "${timeFmt.format(Date(line.timestamp))} ${line.text}",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (line.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                         )
