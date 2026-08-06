@@ -3,12 +3,15 @@
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Warning
@@ -17,10 +20,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bf1.admin.tool.cardtool.CardToolConfig
 import com.bf1.admin.tool.cardtool.JoinStyle
@@ -45,6 +53,7 @@ fun CardToolScreen(
     val logs by viewModel.logs.collectAsState()
     val phase by viewModel.phase.collectAsState()
     val isRunning by viewModel.isRunning.collectAsState()
+    val lastResult by viewModel.lastResult.collectAsState()
 
     // ── 配置状态 ──
     var selectedMode by rememberSaveable { mutableIntStateOf(0x2) }
@@ -71,10 +80,13 @@ fun CardToolScreen(
     val gameId = activeServer?.gameId
     val gameIdValid = gameId?.length == 14
 
-    // 整页滚动，新日志到达时滚到底部
+    // 整页滚动，新日志到达时滚到底部；用户手动上滑翻阅（距底部 > 120dp）时暂停跟随
     val scrollState = rememberScrollState()
+    val followThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
     LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) scrollState.animateScrollTo(scrollState.maxValue)
+        if (logs.isNotEmpty() && scrollState.value >= scrollState.maxValue - followThresholdPx) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
     }
 
     Column(
@@ -88,7 +100,8 @@ fun CardToolScreen(
             servers = servers,
             activeServer = activeServer,
             activeAccount = activeAccount,
-            onServerSelected = { viewModel.switchServer(it) }
+            onServerSelected = { viewModel.switchServer(it) },
+            enabled = !isRunning
         )
 
         // 未保存 GameID 的提示（跨版本更新：去设置重新添加）
@@ -113,6 +126,7 @@ fun CardToolScreen(
         }
 
         ConfigCard(
+            enabled = !isRunning,
             expanded = configExpanded,
             onExpandedChange = { configExpanded = it },
             selectedMode = selectedMode,
@@ -121,8 +135,6 @@ fun CardToolScreen(
             onPlayerSelected = { player = it },
             minMap = minMap,
             onMinMapChange = { if (it.length <= 3) minMap = it.filter(Char::isDigit) },
-            joinStyle = joinStyle,
-            onJoinStyleSelected = { joinStyle = it },
             showAdvanced = showAdvanced,
             onShowAdvancedChange = { showAdvanced = it },
             primeGids = primeGids,
@@ -153,7 +165,7 @@ fun CardToolScreen(
                     enabled = gameIdValid,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("只读诊断")
+                    Text("验证账号")
                 }
                 Button(
                     onClick = { showConfirm = true },
@@ -174,6 +186,8 @@ fun CardToolScreen(
             logs = logs,
             phase = phase,
             isRunning = isRunning,
+            lastResult = lastResult,
+            onClear = { viewModel.clearLogs() },
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -183,7 +197,7 @@ fun CardToolScreen(
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             title = { Text("开始卡行动") },
-            text = { Text("将修改服务器轮换并占位进服，确认开始？") },
+            text = { Text("确认开始？") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -217,6 +231,7 @@ private fun EmptyHint(text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfigCard(
+    enabled: Boolean,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     selectedMode: Int,
@@ -225,8 +240,6 @@ private fun ConfigCard(
     onPlayerSelected: (Int) -> Unit,
     minMap: String,
     onMinMapChange: (String) -> Unit,
-    joinStyle: JoinStyle,
-    onJoinStyleSelected: (JoinStyle) -> Unit,
     showAdvanced: Boolean,
     onShowAdvancedChange: (Boolean) -> Unit,
     primeGids: String,
@@ -268,6 +281,7 @@ private fun ConfigCard(
                             value = MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "选择模式",
                             onValueChange = {},
                             readOnly = true,
+                            enabled = enabled,
                             label = { Text("游戏模式") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeMenu) },
                             modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -293,6 +307,7 @@ private fun ConfigCard(
                             SegmentedButton(
                                 selected = player == value,
                                 onClick = { onPlayerSelected(value) },
+                                enabled = enabled,
                                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
                             ) {
                                 Text("$value")
@@ -304,28 +319,15 @@ private fun ConfigCard(
                     OutlinedTextField(
                         value = minMap,
                         onValueChange = onMinMapChange,
+                        enabled = enabled,
                         label = { Text("最少地图数") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // 进服方式
-                    Text("进服方式", style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        listOf(JoinStyle.DIRECT to "直连（推荐）", JoinStyle.CARDTOOL to "观战占位").forEach { (style, label) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { onJoinStyleSelected(style) }
-                            ) {
-                                RadioButton(selected = joinStyle == style, onClick = { onJoinStyleSelected(style) })
-                                Text(label, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-
                     // 高级选项（预热）
-                    TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }) {
-                        Text(if (showAdvanced) "收起高级选项" else "高级选项（预热）")
+                    TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }, enabled = enabled) {
+                        Text(if (showAdvanced) "收起高级选项" else "高级选项")
                         Icon(
                             if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                             contentDescription = null
@@ -336,13 +338,15 @@ private fun ConfigCard(
                             OutlinedTextField(
                                 value = primeGids,
                                 onValueChange = onPrimeGidsChange,
-                                label = { Text("暖服 GameID（逗号分隔，可多个）") },
+                                enabled = enabled,
+                                label = { Text("预设服 GameID（逗号分隔，可多个）") },
                                 minLines = 2,
                                 modifier = Modifier.fillMaxWidth()
                             )
                             OutlinedTextField(
                                 value = primeRounds,
                                 onValueChange = onPrimeRoundsChange,
+                                enabled = enabled,
                                 label = { Text("每服进出次数") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -350,6 +354,7 @@ private fun ConfigCard(
                             OutlinedTextField(
                                 value = primeStay,
                                 onValueChange = onPrimeStayChange,
+                                enabled = enabled,
                                 label = { Text("每次停留秒数") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -371,8 +376,12 @@ private fun LogSection(
     logs: List<CardToolViewModel.LogLine>,
     phase: String?,
     isRunning: Boolean,
+    lastResult: CardToolViewModel.ResultSummary?,
+    onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val timeFmt = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val successColor = if (isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF2E7D32)
     Card(modifier = modifier) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,7 +397,11 @@ private fun LogSection(
                 val context = LocalContext.current
                 IconButton(
                     onClick = {
-                        clipboard.setText(AnnotatedString(logs.joinToString("\n")))
+                        clipboard.setText(
+                            AnnotatedString(
+                                logs.joinToString("\n") { "${timeFmt.format(Date(it.timestamp))} ${it.text}" }
+                            )
+                        )
                         Toast.makeText(context, "日志已复制", Toast.LENGTH_SHORT).show()
                     },
                     enabled = logs.isNotEmpty()
@@ -397,6 +410,36 @@ private fun LogSection(
                         Icons.Default.ContentCopy,
                         contentDescription = "复制日志",
                         modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onClear,
+                    enabled = logs.isNotEmpty()
+                ) {
+                    Icon(
+                        Icons.Default.DeleteSweep,
+                        contentDescription = "清空日志",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            // 结果高亮条：执行结束后的成功/失败摘要
+            lastResult?.let { r ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Icon(
+                        if (r.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                        contentDescription = null,
+                        tint = if (r.success) successColor else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        (if (r.success) "完成: " else "失败: ") + r.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (r.success) successColor else MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -422,7 +465,7 @@ private fun LogSection(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            line.text,
+                            "${timeFmt.format(Date(line.timestamp))} ${line.text}",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (line.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                         )

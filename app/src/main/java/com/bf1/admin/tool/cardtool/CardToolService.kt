@@ -62,7 +62,7 @@ class CardToolService(
             try {
                 socket.connect()
                 onEvent(Event.Log("Blaze TCP/TLS 已连接"))
-                val client = BlazeClient(socket, onDebug = { msg -> onEvent(Event.Log("[blaze] $msg")) })
+                val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
                 val login = client.login(blazeAuthCode)
                 onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))
 
@@ -166,7 +166,7 @@ class CardToolService(
             try {
                 if (socketDead) {
                     onEvent(Event.Log("Blaze 连接已断开，重建连接"))
-                    val re = reconnect()
+                    val re = reconnect(onEvent)
                     socket.close()
                     socket = re.socket
                     client = re.client
@@ -318,13 +318,13 @@ class CardToolService(
     // 工具
     // ═══════════════════════════════════════════════════
 
-    private suspend fun reconnect(): Reconnected {
+    private suspend fun reconnect(onEvent: (Event) -> Unit): Reconnected {
         // authCode 一次性：每次断线重连都必须现取新码（轮换落库由 CredentialManager 负责）
         val authCode = credentialManager.acquireBlazeAuthCode()
         val (host, port) = api.getBlazeServerAddress()
         val socket = BlazeSocket(host, port)
         socket.connect()
-        val client = BlazeClient(socket)
+        val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
         val login = client.login(authCode)
         return Reconnected(socket, client, login)
     }
