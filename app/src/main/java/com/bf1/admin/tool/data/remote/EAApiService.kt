@@ -61,7 +61,7 @@ class EAApiService {
     /**
      * EA 原生查 PID 失败（含 Juno 重试失败），携带本轮累积的轮换 cookie。
      * 403 insufficient_scope 恒定触发，Juno 重试失败时若丢弃轮换，连续失败会让旧凭证
-     * 逐渐失效；上层兜底 gametools 前应先 persistRotation 落库。
+     * 逐渐失效；CredentialManager 兜底 gametools 前会先落库本轮轮换。
      */
     class EaPidQueryException(
         message: String,

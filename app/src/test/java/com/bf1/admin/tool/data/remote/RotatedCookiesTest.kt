@@ -101,4 +101,43 @@ class RotatedCookiesTest {
         assertTrue(RotatedCookies(remid = "R").hasAny)
         assertTrue(RotatedCookies(sid = "S").hasAny)
     }
+
+    // ═══════════════════════════════════════════════════
+    // mergeRotatedPersist（CredentialManager 增量落库取值）
+    // ═══════════════════════════════════════════════════
+
+    @Test
+    fun mergeOnlyOverwritesTheFieldThatWasRotated() {
+        // 只轮换出 sid：remid 必须沿用库里的现值
+        val merged = mergeRotatedPersist("OLD_REMID", "OLD_SID", RotatedCookies(sid = "NEW_SID"))
+
+        assertEquals("OLD_REMID", merged.first)
+        assertEquals("NEW_SID", merged.second)
+    }
+
+    @Test
+    fun mergeWithOnlyRemidKeepsExistingSid() {
+        val merged = mergeRotatedPersist("OLD_REMID", "OLD_SID", RotatedCookies(remid = "NEW_REMID"))
+
+        assertEquals("NEW_REMID", merged.first)
+        assertEquals("OLD_SID", merged.second)
+    }
+
+    @Test
+    fun mergeWithNoRotationReturnsExistingPairUnchanged() {
+        val merged = mergeRotatedPersist("OLD_REMID", "OLD_SID", RotatedCookies())
+
+        assertEquals("OLD_REMID", merged.first)
+        assertEquals("OLD_SID", merged.second)
+    }
+
+    @Test
+    fun mergeWithBothRotatedOverwritesBoth() {
+        val merged = mergeRotatedPersist(
+            "OLD_REMID", "OLD_SID", RotatedCookies(remid = "R1", sid = "S1")
+        )
+
+        assertEquals("R1", merged.first)
+        assertEquals("S1", merged.second)
+    }
 }
