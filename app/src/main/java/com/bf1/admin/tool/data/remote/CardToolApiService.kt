@@ -15,11 +15,13 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * 卡服功能专用网络层，对应 CardTool.js 的 loginB / loginG / gatewayRequest。
+ * 卡服功能网络层，对应 CardTool.js 的 loginB / loginG / gatewayRequest。
  *
- * 与 [EAApiService]（sparta-gw.battlelog.com，管理员管理）不同，本服务走
- * `sparta-gw-bf1.battlelog.com`（BF1 专用网关），并额外提供 Blaze AuthCode 换取
- * （GOS-BlazeServer-BFTUN-PC，供 Blaze socket 登录用）。
+ * 网关地址 `sparta-gw-bf1.battlelog.com` 与 [EAApiService] 的 `sparta-gw.battlelog.com`
+ * 解析到同一组 IP（同一后端负载均衡的别名），换 session 走同一 RPC
+ * （Authentication.getEnvIdViaAuthCode，同一 client sparta-backend-as-user-pc）——
+ * 两者产生的 sessionId 通用，因此卡服直接复用 CredentialManager 缓存的 sessionId。
+ * 本类保留 Blaze AuthCode 换取（GOS-BlazeServer-BFTUN-PC，供 Blaze socket 登录用）。
  */
 class CardToolApiService {
 

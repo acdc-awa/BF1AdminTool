@@ -4,11 +4,9 @@ import com.bf1.admin.tool.blaze.BlazeClient
 import com.bf1.admin.tool.blaze.BlazeConnectionClosedException
 import com.bf1.admin.tool.blaze.BlazeLoginResult
 import com.bf1.admin.tool.blaze.BlazeSocket
-import com.bf1.admin.tool.data.local.entity.EncryptedAccount
 import com.bf1.admin.tool.data.remote.CardToolApiService
 import com.bf1.admin.tool.data.remote.GatewayError
-import com.bf1.admin.tool.data.remote.RotatedCookies
-import com.bf1.admin.tool.data.repository.AccountRepository
+import com.bf1.admin.tool.data.session.CredentialManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -16,14 +14,15 @@ import kotlinx.coroutines.ensureActive
 
 /**
  * 卡服流程编排，对应 CardTool.js 主流程：
- * 登录（Gateway session + Blaze authCode）→ 连接 Blaze 登录 → 管理员校验 →
- * 预热（可选）→ 占位进服循环 → 锚定地图轮换；断线/会话失效自动重建。
+ * 登录（网关 sessionId + Blaze authCode，均由 CredentialManager 生产）→
+ * 连接 Blaze 登录 → 管理员校验 → 预热（可选）→ 占位进服循环 → 锚定地图轮换；
+ * 断线/会话失效自动重建。
  *
  * [run] 会修改服务器轮换（写操作）；[runDiagnostic] 只登录并查询，不改服务器，用于实机验证链路。
  * 通过 [onEvent] 把日志/阶段/结果推给 UI；协程取消即停止（UI 停止按钮）。
  */
 class CardToolService(
-    private val accountRepository: AccountRepository,
+    private val credentialManager: CredentialManager,
     private val api: CardToolApiService = CardToolApiService()
 ) {
 
@@ -48,32 +47,23 @@ class CardToolService(
     private suspend fun runScoped(config: CardToolConfig, onEvent: (Event) -> Unit, diagnosticOnly: Boolean) {
         try {
             onEvent(Event.Log("正在初始化"))
-            val account = requireCredentials()
-            var remid = account.remid
-            var sid = account.sid
-
-            onEvent(Event.Log("获取 Gateway Session..."))
-            val gateway = api.getGatewaySession(remid, sid).getOrThrow()
-            gateway.rotated.remid?.let { remid = it }
-            gateway.rotated.sid?.let { sid = it }
-            persistRotation(account, gateway.rotated)
-            val sessionId = gateway.sessionId
-
+            // 网关 sessionId 与管理页共用同一份缓存（同一网关、同一换法），
+            // Blaze authCode 一次性、每次登录现取。
+            val sessionId = credentialManager.getActiveSessionId()
             onEvent(Event.Log("获取 Blaze AuthCode..."))
-            val blazeAuth = api.getBlazeAuthCode(remid, sid).getOrThrow()
-            persistRotation(account, blazeAuth.rotated)
+            val blazeAuthCode = credentialManager.acquireBlazeAuthCode()
 
             val (host, port) = api.getBlazeServerAddress()
             onEvent(Event.Log("Blaze 服务器: $host:$port"))
 
-            onEvent(Event.Log("Blaze AuthCode 长度: ${blazeAuth.authCode.length}"))
+            onEvent(Event.Log("Blaze AuthCode 长度: ${blazeAuthCode.length}"))
             onEvent(Event.Log("连接 Blaze 并登录..."))
             val socket = BlazeSocket(host, port)
             try {
                 socket.connect()
                 onEvent(Event.Log("Blaze TCP/TLS 已连接"))
                 val client = BlazeClient(socket, onDebug = { msg -> onEvent(Event.Log("[blaze] $msg")) })
-                val login = client.login(blazeAuth.authCode)
+                val login = client.login(blazeAuthCode)
                 onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))
 
                 if (diagnosticOnly) {
@@ -268,8 +258,10 @@ class CardToolService(
                 if (e is BlazeConnectionClosedException) {
                     socketDead = true
                 } else if (e is GatewayError && (e.code == -32501 || e.code == -32504)) {
-                    onEvent(Event.Log("Gateway Session 失效，刷新..."))
-                    sessionId = refreshGatewaySession()
+                    // 缓存的 session 已被网关废弃：强制失效后重换（走 CredentialManager 统一路径）
+                    onEvent(Event.Log("Gateway Session 失效，强制重换..."))
+                    credentialManager.invalidateActiveSession()
+                    sessionId = credentialManager.getActiveSessionId()
                 }
                 delay(3000)
             }
@@ -327,37 +319,17 @@ class CardToolService(
     // ═══════════════════════════════════════════════════
 
     private suspend fun reconnect(): Reconnected {
-        val account = requireCredentials()
-        val auth = api.getBlazeAuthCode(account.remid, account.sid).getOrThrow()
-        persistRotation(account, auth.rotated)
+        // authCode 一次性：每次断线重连都必须现取新码（轮换落库由 CredentialManager 负责）
+        val authCode = credentialManager.acquireBlazeAuthCode()
         val (host, port) = api.getBlazeServerAddress()
         val socket = BlazeSocket(host, port)
         socket.connect()
         val client = BlazeClient(socket)
-        val login = client.login(auth.authCode)
+        val login = client.login(authCode)
         return Reconnected(socket, client, login)
     }
 
-    private suspend fun refreshGatewaySession(): String {
-        val account = requireCredentials()
-        val g = api.getGatewaySession(account.remid, account.sid).getOrThrow()
-        persistRotation(account, g.rotated)
-        return g.sessionId
-    }
-
-    private suspend fun requireCredentials(): EncryptedAccount =
-        accountRepository.getActiveEncrypted() ?: throw IllegalStateException("请先登录 EA 账号")
-
     private fun requireGameId(config: CardToolConfig): Long =
         config.gameId.toLongOrNull() ?: throw IllegalArgumentException("gameId 无效：${config.gameId}")
-
-    private suspend fun persistRotation(account: EncryptedAccount, rotated: RotatedCookies) {
-        if (!rotated.hasAny) return
-        accountRepository.updateCredentials(
-            account.id,
-            rotated.remid ?: account.remid,
-            rotated.sid ?: account.sid
-        )
-    }
 
 }
