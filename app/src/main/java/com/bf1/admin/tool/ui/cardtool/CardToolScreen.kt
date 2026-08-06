@@ -100,7 +100,8 @@ fun CardToolScreen(
             servers = servers,
             activeServer = activeServer,
             activeAccount = activeAccount,
-            onServerSelected = { viewModel.switchServer(it) }
+            onServerSelected = { viewModel.switchServer(it) },
+            enabled = !isRunning
         )
 
         // 未保存 GameID 的提示（跨版本更新：去设置重新添加）
@@ -125,6 +126,7 @@ fun CardToolScreen(
         }
 
         ConfigCard(
+            enabled = !isRunning,
             expanded = configExpanded,
             onExpandedChange = { configExpanded = it },
             selectedMode = selectedMode,
@@ -133,8 +135,6 @@ fun CardToolScreen(
             onPlayerSelected = { player = it },
             minMap = minMap,
             onMinMapChange = { if (it.length <= 3) minMap = it.filter(Char::isDigit) },
-            joinStyle = joinStyle,
-            onJoinStyleSelected = { joinStyle = it },
             showAdvanced = showAdvanced,
             onShowAdvancedChange = { showAdvanced = it },
             primeGids = primeGids,
@@ -231,6 +231,7 @@ private fun EmptyHint(text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfigCard(
+    enabled: Boolean,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     selectedMode: Int,
@@ -239,8 +240,6 @@ private fun ConfigCard(
     onPlayerSelected: (Int) -> Unit,
     minMap: String,
     onMinMapChange: (String) -> Unit,
-    joinStyle: JoinStyle,
-    onJoinStyleSelected: (JoinStyle) -> Unit,
     showAdvanced: Boolean,
     onShowAdvancedChange: (Boolean) -> Unit,
     primeGids: String,
@@ -282,6 +281,7 @@ private fun ConfigCard(
                             value = MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "选择模式",
                             onValueChange = {},
                             readOnly = true,
+                            enabled = enabled,
                             label = { Text("游戏模式") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeMenu) },
                             modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -307,6 +307,7 @@ private fun ConfigCard(
                             SegmentedButton(
                                 selected = player == value,
                                 onClick = { onPlayerSelected(value) },
+                                enabled = enabled,
                                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
                             ) {
                                 Text("$value")
@@ -318,27 +319,14 @@ private fun ConfigCard(
                     OutlinedTextField(
                         value = minMap,
                         onValueChange = onMinMapChange,
+                        enabled = enabled,
                         label = { Text("最少地图数") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // 进服方式
-                    Text("进服方式", style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        listOf(JoinStyle.DIRECT to "直连（推荐）", JoinStyle.CARDTOOL to "观战占位").forEach { (style, label) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { onJoinStyleSelected(style) }
-                            ) {
-                                RadioButton(selected = joinStyle == style, onClick = { onJoinStyleSelected(style) })
-                                Text(label, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-
                     // 高级选项（预热）
-                    TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }) {
+                    TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }, enabled = enabled) {
                         Text(if (showAdvanced) "收起高级选项" else "高级选项（预热）")
                         Icon(
                             if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
@@ -350,6 +338,7 @@ private fun ConfigCard(
                             OutlinedTextField(
                                 value = primeGids,
                                 onValueChange = onPrimeGidsChange,
+                                enabled = enabled,
                                 label = { Text("暖服 GameID（逗号分隔，可多个）") },
                                 minLines = 2,
                                 modifier = Modifier.fillMaxWidth()
@@ -357,6 +346,7 @@ private fun ConfigCard(
                             OutlinedTextField(
                                 value = primeRounds,
                                 onValueChange = onPrimeRoundsChange,
+                                enabled = enabled,
                                 label = { Text("每服进出次数") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -364,6 +354,7 @@ private fun ConfigCard(
                             OutlinedTextField(
                                 value = primeStay,
                                 onValueChange = onPrimeStayChange,
+                                enabled = enabled,
                                 label = { Text("每次停留秒数") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()

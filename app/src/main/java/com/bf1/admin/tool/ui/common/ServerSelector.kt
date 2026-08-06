@@ -37,13 +37,15 @@ import com.bf1.admin.tool.data.local.entity.ServerEntity
 
 /**
  * 服务器选择器（下拉），「上下管理」与「卡行动」共用同一样式。
+ * [enabled] 为 false 时禁用（如卡行动运行中），默认开启。
  */
 @Composable
 fun ServerSelector(
     servers: List<ServerEntity>,
     activeServer: ServerEntity?,
     activeAccount: AccountEntity?,
-    onServerSelected: (ServerEntity) -> Unit
+    onServerSelected: (ServerEntity) -> Unit,
+    enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
     var buttonWidth by remember { mutableIntStateOf(0) }
@@ -59,6 +61,7 @@ fun ServerSelector(
     ) {
         OutlinedButton(
             onClick = { expanded = !expanded },
+            enabled = enabled,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
