@@ -60,8 +60,6 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val _decryptedCredentials = MutableStateFlow<DecryptedCredentials?>(null)
     val decryptedCredentials: StateFlow<DecryptedCredentials?> = _decryptedCredentials.asStateFlow()
 
-    private var isSaving = false
-
     // ── 服务器查询（用于设置页添加服务器弹窗）──
     private val _lookupServerName = MutableStateFlow<String?>(null)
     val lookupServerName: StateFlow<String?> = _lookupServerName.asStateFlow()
@@ -242,9 +240,10 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveCredentials(remid: String, sid: String) {
-        if (isSaving) return
+        if (_isLoading.value) return
         viewModelScope.launch {
-            isSaving = true
+            // 复用 isLoading：弹窗"保存并验证"按钮的转圈/禁用由它驱动
+            _isLoading.value = true
             try {
                 val account = _activeAccount.value ?: throw Exception("无活跃账号")
                 // 先验证后保存：兑换 + 轮换落库 + 记 session 在 CredentialManager
@@ -257,7 +256,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 _message.emit("验证失败，凭证未修改: ${e.message}")
             } finally {
-                isSaving = false
+                _isLoading.value = false
             }
         }
     }
