@@ -18,7 +18,6 @@ import kotlinx.coroutines.withContext
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as BF1AdminApp
     private val accountRepo = app.accountRepository
-    private val adminRepo = app.adminRepository
     private val credentialManager = app.credentialManager
 
     private val _isLoading = MutableStateFlow(false)
@@ -35,7 +34,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             try {
                 val session = withContext(Dispatchers.IO) {
-                    adminRepo.authenticate(remid, sid).getOrThrow()
+                    credentialManager.authenticate(remid, sid).getOrThrow()
                 }
                 // 认证过程中 EA 可能已轮换 cookie，账号从建档起就存最新值。
                 val effectiveRemid = session.rotated.remid ?: remid
