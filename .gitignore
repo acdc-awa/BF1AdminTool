@@ -25,3 +25,5 @@ app/release/
 .codex/
 .agent/
 docs
+# 本地真实 EA 凭证（remid/sid），严禁入库
+.env.txt

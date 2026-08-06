@@ -12,7 +12,7 @@ class SessionRefreshWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result = try {
-        (applicationContext as BF1AdminApp).sessionManager.refreshActiveSession()
+        (applicationContext as BF1AdminApp).credentialManager.refreshActiveSession()
         Result.success()
     } catch (_: EAApiService.CredentialsExpiredException) {
         Result.success()
