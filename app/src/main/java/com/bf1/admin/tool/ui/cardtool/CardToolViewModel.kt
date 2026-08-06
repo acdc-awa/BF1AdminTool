@@ -56,10 +56,16 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
 
     // ── 运行状态 ──
 
-    data class LogLine(val text: String, val isError: Boolean = false)
+    data class LogLine(val text: String, val isError: Boolean = false, val timestamp: Long = System.currentTimeMillis())
+
+    /** 最近一次执行结果（Finished 事件），用于日志卡顶部的高亮摘要条。 */
+    data class ResultSummary(val success: Boolean, val message: String)
 
     private val _logs = MutableStateFlow<List<LogLine>>(emptyList())
     val logs: StateFlow<List<LogLine>> = _logs.asStateFlow()
+
+    private val _lastResult = MutableStateFlow<ResultSummary?>(null)
+    val lastResult: StateFlow<ResultSummary?> = _lastResult.asStateFlow()
 
     private val _phase = MutableStateFlow<String?>(null)
     val phase: StateFlow<String?> = _phase.asStateFlow()
@@ -88,6 +94,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
     private fun start(config: CardToolConfig, diagnostic: Boolean) {
         if (_isRunning.value) return
         _logs.value = emptyList()
+        _lastResult.value = null
         _phase.value = if (diagnostic) "诊断中" else "准备中"
         _isRunning.value = true
         runJob = viewModelScope.launch(Dispatchers.IO) {
@@ -104,6 +111,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
                             if (event.success) "完成: ${event.message}" else "失败: ${event.message}",
                             isError = !event.success
                         )
+                        _lastResult.value = ResultSummary(event.success, event.message)
                         _message.tryEmit(event.message)
                     }
                 }
@@ -124,6 +132,11 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
             _phase.value = null
             _logs.value = _logs.value + LogLine("已停止", isError = true)
         }
+    }
+
+    /** 清空日志（运行中允许，不影响任务）。 */
+    fun clearLogs() {
+        _logs.value = emptyList()
     }
 
     override fun onCleared() {
