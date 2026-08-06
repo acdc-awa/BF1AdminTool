@@ -20,7 +20,5 @@ internal fun parsePersonaId(json: JSONObject): String {
     if (persona == null || persona.length() == 0) {
         throw PersonaNotFoundException("未找到该 EAID 对应的账号")
     }
-    val pid = persona.getJSONObject(0).optString("personaId")
-    if (pid.isEmpty()) throw PersonaNotFoundException("persona 缺少 personaId")
-    return pid
+    return requirePersonaId(persona.getJSONObject(0), "personaId", "persona 缺少 personaId")
 }

@@ -158,35 +158,81 @@ class CredentialManager(
     }
 
     /**
-     * 玩家名 → PID：EA 原生查询优先，非「玩家不存在」类失败兜底 gametools。
-     * EA 查询产生的轮换 cookie 在锁内落库（成功与 Juno 重试失败路径都不丢）。
+     * 玩家名 → PID。
+     *
+     * 优先级：
+     * 1. Juno refresh_token 静默换 access_token → gateway personas（无需 cookie）
+     * 2. ORIGIN_JS_SDK cookie 换 access_token → 403 兜底 Juno cookie
+     * 3. gametools 公共 API 兜底
+     *
+     * EA 原生查询产生的轮换 cookie 在锁内落库。
      */
     suspend fun resolvePlayerName(playerName: String): PlayerResolveResult {
         val account = accountRepository.getActiveEncrypted() ?: throw Exception("请先登录账号")
         return withAccountLock(account.id) {
             val latest = accountRepository.getDecryptedById(account.id) ?: throw Exception("请先登录账号")
+
+            // 1) Juno refresh_token 静默路径（优先：完整 scope，无需 cookie）
+            if (latest.junoRefreshToken != null) {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        val tokenResult = eaApi.refreshJunoAccessToken(latest.junoRefreshToken)
+                        // refresh_token rotation：锁内落库新 refresh_token
+                        accountRepository.saveJunoRefreshToken(latest.id, tokenResult.refreshToken)
+                        eaApi.resolvePlayerNameByJunoToken(tokenResult.accessToken, playerName)
+                    }
+                    return@withAccountLock PlayerResolveResult(result.personaId, PlayerResolveSource.EA)
+                } catch (e: PersonaNotFoundException) {
+                    throw e
+                } catch (e: EAApiService.CredentialsExpiredException) {
+                    // refresh_token 本身过期，清除后降级到 cookie 路径
+                    accountRepository.saveJunoRefreshToken(latest.id, null)
+                    // fall through to cookie path
+                } catch (_: Exception) {
+                    // refresh_token 路径失败（网络/令牌失效）：不清除 refresh_token，
+                    // 降级到 cookie 路径，下次 refresh_token 可能恢复
+                }
+            }
+
+            // 2) ORIGIN cookie → Juno cookie 路径（现有逻辑）
             try {
                 val result = withContext(Dispatchers.IO) {
                     eaApi.resolvePlayerNameByEAID(latest.remid, latest.sid, playerName)
                 }
                 persistRotated(latest.id, result.rotated)
-                PlayerResolveResult(result.personaId, PlayerResolveSource.EA)
+                return@withAccountLock PlayerResolveResult(result.personaId, PlayerResolveSource.EA)
             } catch (e: PersonaNotFoundException) {
-                // 查无此人：gametools 也查不到，不兜底，直接报错
                 throw e
             } catch (e: Exception) {
-                // 凭证过期 / insufficient_scope / 网络等：兜底 gametools
-                // 轮换 cookie 不随失败丢弃（403 恒定场景下每次失败都丢一次轮换）
                 try {
                     (e as? EAApiService.EaPidQueryException)?.let { persistRotated(latest.id, it.rotated) }
-                } catch (_: Exception) {
-                    // 落库失败仅丢弃本轮轮换，不影响 gametools 兜底
-                }
+                } catch (_: Exception) {}
+                // 3) gametools 兜底
                 PlayerResolveResult(
                     withContext(Dispatchers.IO) { eaApi.resolvePlayerNameGametools(playerName) },
                     PlayerResolveSource.GAMETOOLS
                 )
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Juno WebView 登录 + refresh_token 管理
+    // ═══════════════════════════════════════════════════
+
+    /** 生成 Juno PKCE 授权 URL（WebView 登录第一步）。 */
+    fun buildJunoAuthUrl(): EAApiService.JunoAuthParams = eaApi.buildJunoAuthUrl()
+
+    /**
+     * WebView 登录完成后调用：用 code 换 access_token + refresh_token，播种到账号。
+     * [accountId] 来自 [AccountRepository.addOrUpdateAccount] 的返回值。
+     */
+    suspend fun onJunoLoginComplete(accountId: Long, code: String, codeVerifier: String) {
+        withAccountLock(accountId) {
+            val tokenResult = withContext(Dispatchers.IO) {
+                eaApi.exchangeJunoCode(code, codeVerifier)
+            }
+            accountRepository.saveJunoRefreshToken(accountId, tokenResult.refreshToken)
         }
     }
 

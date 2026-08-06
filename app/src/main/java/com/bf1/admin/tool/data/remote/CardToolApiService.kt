@@ -125,7 +125,7 @@ class CardToolApiService {
                 )
                 GatewaySessionResult(
                     sessionId = result.getString("sessionId"),
-                    personaId = result.optString("personaId", ""),
+                    personaId = jsonOptString(result, "personaId").orEmpty(),
                     rotated = rotated
                 )
             }

@@ -57,6 +57,10 @@ class EAApiService {
     data class RefreshResult(val sessionId: String, val rotated: RotatedCookies)
     data class AdminInfo(val personaId: String, val displayName: String, val avatar: String)
     data class EaPidResult(val personaId: String, val rotated: RotatedCookies)
+    /** Juno token 交换结果：access_token 用于查 PID，refresh_token 用于后续静默续期。 */
+    data class JunoTokenResult(val accessToken: String, val refreshToken: String)
+    /** Juno 授权 URL 及关联参数（调用方须保存 codeVerifier 用于后续 token 交换）。 */
+    data class JunoAuthParams(val authUrl: String, val codeVerifier: String, val codeChallenge: String)
 
     /**
      * EA 原生查 PID 失败（含 Juno 重试失败），携带本轮累积的轮换 cookie。
@@ -76,6 +80,111 @@ class EAApiService {
      * remid/sid 凭证已过期，需要用户重新登录。
      */
     class CredentialsExpiredException(message: String) : Exception(message)
+
+    // ═══════════════════════════════════════════════════
+    // Juno 授权 URL 生成（WebView 登录用）
+    // ═══════════════════════════════════════════════════
+
+    /** 生成 Juno PKCE 授权 URL。返回 [JunoAuthParams]，调用方打开 authUrl 到 WebView。 */
+    fun buildJunoAuthUrl(): JunoAuthParams {
+        val random = SecureRandom()
+        val codeVerifier = b64url(ByteArray(32).also { random.nextBytes(it) })
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(codeVerifier.toByteArray(StandardCharsets.US_ASCII))
+        val codeChallenge = b64url(digest)
+        val nonce = ByteBuffer.wrap(ByteArray(4).also { random.nextBytes(it) }).int.toString()
+        val ts = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss:SSS")
+            .withZone(ZoneOffset.UTC).format(Instant.now())
+        val pcSign = buildPcSign(if (random.nextBoolean()) "v1" else "v2", ts)
+
+        val authUrl = "https://accounts.ea.com/connect/auth".toHttpUrl().newBuilder()
+            .addQueryParameter("client_id", JUNO_CLIENT_ID)
+            .addQueryParameter("sbiod_enabled", "false")
+            .addQueryParameter("response_type", "code")
+            .addQueryParameter("locale", "en_US")
+            .addQueryParameter("pc_sign", pcSign)
+            .addQueryParameter("nonce", nonce)
+            .addQueryParameter("code_challenge_method", "S256")
+            .addQueryParameter("code_challenge", codeChallenge)
+            .build()
+            .toString()
+
+        return JunoAuthParams(authUrl, codeVerifier, codeChallenge)
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Juno Token 端点
+    // ═══════════════════════════════════════════════════
+
+    /**
+     * WebView 登录完成后用 code 换 access_token + refresh_token。
+     * POST /connect/token grant_type=authorization_code。
+     */
+    fun exchangeJunoCode(code: String, codeVerifier: String): JunoTokenResult {
+        val tokenBody = FormBody.Builder()
+            .add("grant_type", "authorization_code")
+            .add("code", code)
+            .add("code_verifier", codeVerifier)
+            .add("client_id", JUNO_CLIENT_ID)
+            .add("client_secret", JUNO_CLIENT_SECRET)
+            .add("redirect_uri", JUNO_REDIRECT_URI)
+            .add("token_format", "JWS")
+            .build()
+        val tokenRequest = Request.Builder().url(JUNO_TOKEN_ENDPOINT)
+            .header("User-Agent", "EAApp/13.0 (Windows)")
+            .post(tokenBody)
+            .build()
+
+        client.newCall(tokenRequest).execute().use { response ->
+            val body = response.body?.string()
+                ?: throw Exception("Empty response exchanging juno code")
+            if (response.code != 200) {
+                throw Exception("Juno code 交换失败: HTTP ${response.code}: $body")
+            }
+            val json = JSONObject(body)
+            val accessToken = json.optString("access_token", "").ifEmpty {
+                throw Exception("Juno token 响应没有 access_token: $body")
+            }
+            val refreshToken = json.optString("refresh_token", "").ifEmpty {
+                throw Exception("Juno token 响应没有 refresh_token: $body")
+            }
+            return JunoTokenResult(accessToken, refreshToken)
+        }
+    }
+
+    /**
+     * 用已存储的 refresh_token 静默换新的 access_token。
+     * POST /connect/token grant_type=refresh_token。
+     * EA 会同时下发新的 refresh_token（rotation），调用方自行持久化。
+     */
+    fun refreshJunoAccessToken(refreshToken: String): JunoTokenResult {
+        val tokenBody = FormBody.Builder()
+            .add("grant_type", "refresh_token")
+            .add("refresh_token", refreshToken)
+            .add("client_id", JUNO_CLIENT_ID)
+            .add("client_secret", JUNO_CLIENT_SECRET)
+            .add("token_format", "JWS")
+            .build()
+        val tokenRequest = Request.Builder().url(JUNO_TOKEN_ENDPOINT)
+            .header("User-Agent", "EAApp/13.0 (Windows)")
+            .post(tokenBody)
+            .build()
+
+        client.newCall(tokenRequest).execute().use { response ->
+            val body = response.body?.string()
+                ?: throw Exception("Empty response refreshing juno token")
+            if (response.code != 200) {
+                throw Exception("Juno refresh 失败: HTTP ${response.code}: $body")
+            }
+            val json = JSONObject(body)
+            val accessToken = json.optString("access_token", "").ifEmpty {
+                throw Exception("Juno refresh 响应没有 access_token: $body")
+            }
+            // refresh_token rotation：EA 可能下发新的 refresh_token
+            val newRefreshToken = json.optString("refresh_token", "").ifEmpty { refreshToken }
+            return JunoTokenResult(accessToken, newRefreshToken)
+        }
+    }
 
     // ═══════════════════════════════════════════════════
     // 被动 Cookie 更新（对应 EAappEmulater 的 UpdateCookie）
@@ -234,6 +343,16 @@ class EAApiService {
     }
 
     /**
+     * 直接用 Juno access_token 查 PID（refresh_token 静默续期后使用）。
+     * 与 [resolvePlayerNameByEAID] 不同：跳过了 ORIGIN cookie → 403 → Juno cookie 的全流程，
+     * 直接把已获得的 Juno token 用于 personas 查询。
+     */
+    fun resolvePlayerNameByJunoToken(accessToken: String, eaid: String): EaPidResult {
+        val cookies = CookieCollector()
+        return queryPersonas(accessToken, eaid, cookies)
+    }
+
+    /**
      * EA 原生查 PID：remid/sid → access_token → gateway personas（按 displayName）。
      *
      * 脚本 eaid_to_pid.py 的 ORIGIN 路径；ORIGIN token 缺 dp.server.default scope
@@ -318,7 +437,8 @@ class EAApiService {
                 if (p.optString("namespaceName") == "cem_ea_id") {
                     return PersonaInfo(
                         displayName = p.optString("displayName"),
-                        personaId = p.optString("personaId")
+                        personaId = jsonOptString(p, "personaId")
+                            ?: throw Exception("cem_ea_id persona 缺少 personaId")
                     )
                 }
             }
@@ -469,9 +589,10 @@ class EAApiService {
             val list = mutableListOf<AdminInfo>()
             for (i in 0 until admins.length()) {
                 val a = admins.getJSONObject(i)
+                val personaId = jsonOptString(a, "personaId") ?: continue
                 list.add(
                     AdminInfo(
-                        personaId = a.optString("personaId"),
+                        personaId = personaId,
                         displayName = a.optString("displayName"),
                         avatar = a.optString("avatar")
                     )
@@ -533,8 +654,8 @@ class EAApiService {
             val body = response.body?.string()
                 ?: throw Exception("Empty response resolving player name")
             val json = JSONObject(body)
-            val id = json.optString("id", "")
-            if (id.isEmpty()) throw Exception("Player not found: $playerName")
+            val id = jsonOptString(json, "id")
+                ?: throw Exception("Player not found: $playerName")
             return id
         }
     }
