@@ -24,7 +24,7 @@ internal fun parseFullServerDetails(result: JSONObject): RspInfo {
         (0 until adminList.length()).map { i ->
             val a = adminList.getJSONObject(i)
             RspAdmin(
-                personaId = a.optString("personaId"),
+                personaId = jsonOptString(a, "personaId").orEmpty(),
                 displayName = a.optString("displayName")
             )
         }
@@ -46,7 +46,7 @@ internal fun parseFullServerDetails(result: JSONObject): RspInfo {
             customGameSettings = settings.optString("customGameSettings", "").takeIf { it.isNotEmpty() }
         ),
         adminList = admins,
-        ownerPersonaId = owner.optString("personaId"),
+        ownerPersonaId = jsonOptString(owner, "personaId").orEmpty(),
         ownerDisplayName = owner.optString("displayName")
     )
 }

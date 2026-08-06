@@ -32,4 +32,12 @@ class PersonasParserTest {
         val json = JSONObject("""{"personas":{"persona":[{"displayName":"NoPid"}]}}""")
         assertThrows(PersonaNotFoundException::class.java) { parsePersonaId(json) }
     }
+
+    @Test
+    fun parsePersonaIdThrowsWhenPersonaIdIsExplicitNull() {
+        val json = JSONObject(
+            """{"personas":{"persona":[{"personaId":null,"displayName":"NullPid"}]}}"""
+        )
+        assertThrows(PersonaNotFoundException::class.java) { parsePersonaId(json) }
+    }
 }

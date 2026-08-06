@@ -22,11 +22,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bf1.admin.tool.util.CookieHelper
 
 /**
- * EA 登录入口 URL。
- * 注意：不能直接用 OAuth 授权端点，因为 OAuth 回调 test.pulse.ea.com 在 Android 上无法访问。
- * 改用常规登录页，cookie 提取由 onPageStarted 事件驱动。
+ * EA 登录入口 URL —— 改用 Juno (EA app) 授权 URL。
+ * WebView 走 JUNO_PC_CLIENT OAuth 流程：用户登录后 EA 重定向到
+ * qrc:///html/login_successful.html?code=XXX，同时下发 remid/sid cookie。
+ * 一次登录同时拿到 remid/sid（session 管理）和 authorization_code（换 refresh_token 查 PID）。
  */
-private const val LOGIN_URL = "https://www.ea.com/login"
 
 /** EA App Desktop User-Agent，对应 EAappEmulater LoginWindow 中的 Settings.UserAgent */
 private const val EA_DESKTOP_UA =
@@ -78,6 +78,7 @@ fun WebViewLoginScreen(
     onBack: () -> Unit,
     viewModel: LoginViewModel = viewModel()
 ) {
+    val junoUrl = viewModel.junoAuthParams.authUrl
     val isLoading by viewModel.isLoading.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var extractionTriggered by remember { mutableStateOf(false) }
@@ -135,12 +136,12 @@ fun WebViewLoginScreen(
                                 val bridge = EaLoginBridge { }
                                 addJavascriptInterface(bridge, "EaBridge")
 
-                            fun tryExtractCookies(wv: WebView?) {
+                            fun tryExtractCookies(wv: WebView?, junoCode: String? = null) {
                                 if (extractionTriggered) return
-                                
+
                                 val manager = CookieManager.getInstance()
-                                manager.flush() // 立刻同步缓存的 Cookie
-                                
+                                manager.flush()
+
                                 val cookieUrls = listOf(
                                     "https://accounts.ea.com/connect/auth",
                                     "https://accounts.ea.com",
@@ -161,11 +162,19 @@ fun WebViewLoginScreen(
                                     extractionTriggered = true
                                     showingOTCMessage = false
                                     errorMsg = null
-                                    val (remid, sid) = result
                                     wv?.loadUrl("about:blank")
-                                    viewModel.loginWithCookiesFromWebView(
-                                        rawCookies = "remid=$remid; sid=$sid"
-                                    )
+                                    val (remid, sid) = result
+                                    if (junoCode != null) {
+                                        // Juno WebView 登录：同时有 code 和 remid/sid
+                                        viewModel.onJunoWebViewLogin(
+                                            code = junoCode,
+                                            rawCookies = "remid=$remid; sid=$sid"
+                                        )
+                                    } else {
+                                        viewModel.loginWithCookiesFromWebView(
+                                            rawCookies = "remid=$remid; sid=$sid"
+                                        )
+                                    }
                                 }
                             }
 
@@ -198,6 +207,15 @@ fun WebViewLoginScreen(
                                     request: WebResourceRequest?
                                 ): Boolean {
                                     val reqUrl = request?.url?.toString() ?: return false
+                                    // 拦截 Juno OAuth 回调：qrc:///html/login_successful.html?code=XXX
+                                    if (reqUrl.contains("login_successful.html") && reqUrl.contains("code=")) {
+                                        val code = reqUrl.substringAfter("code=", "").substringBefore("&")
+                                        if (code.isNotEmpty()) {
+                                            tryExtractCookies(view, junoCode = code)
+                                        }
+                                        return true
+                                    }
+                                    // 兼容旧版 ORIGIN 回调
                                     if (reqUrl.startsWith("nucleus:rest") || reqUrl.contains("test.pulse.ea.com")) {
                                         tryExtractCookies(view)
                                     }
@@ -224,7 +242,7 @@ fun WebViewLoginScreen(
                             CookieManager.getInstance().flush()
                             evaluateJavascript("localStorage.clear(); sessionStorage.clear();", null)
 
-                            loadUrl(LOGIN_URL)
+                            loadUrl(junoUrl)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "[WebView] Failed to create WebView", e)

@@ -155,6 +155,9 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                         val resolve = if (isDirect) null
                         else withContext(Dispatchers.IO) { credentialManager.resolvePlayerName(player) }
                         val personaId = resolve?.personaId ?: player.removePrefix("#")
+                        if (personaId.isBlank() || personaId == "null") {
+                            throw Exception("无法解析玩家 $player 的 PID")
+                        }
                         withSessionRetry { sessionId ->
                             withContext(Dispatchers.IO) {
                                 if (isAdd) adminRepo.addAdmin(sessionId, server.serverId, personaId)
@@ -168,7 +171,9 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         results.add("$player: 成功$source")
                     } catch (e: Exception) {
-                        results.add("$player: 失败 (${e.message})")
+                        val detail = if (e.message != null) e.message!!
+                            else "${e.javaClass.simpleName}"
+                        results.add("$player: 失败 ($detail)")
                     }
                 }
                 _message.emit(results.joinToString("\n"))

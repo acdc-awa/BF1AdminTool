@@ -45,6 +45,13 @@ class AccountRepository(private val accountDao: AccountDao, private val context:
         accountDao.update(existing.copy(remid = encRemid, sid = encSid))
     }
 
+    /** 播种 Juno refresh_token（首次登录时从 WebView 流程拿到后调用）。传 null 或空串清除。 */
+    suspend fun saveJunoRefreshToken(id: Long, refreshToken: String?) {
+        val encrypted = if (refreshToken.isNullOrEmpty()) null
+        else AccountCrypto.encrypt(refreshToken, context)
+        accountDao.updateRefreshToken(id, encrypted)
+    }
+
     private fun AccountEntity.toDecrypted(): EncryptedAccount {
         return EncryptedAccount(
             id = id,
@@ -52,6 +59,7 @@ class AccountRepository(private val accountDao: AccountDao, private val context:
             personaId = personaId,
             remid = AccountCrypto.decrypt(remid, context),
             sid = AccountCrypto.decrypt(sid, context),
+            junoRefreshToken = junoRefreshToken?.let { AccountCrypto.decrypt(it, context) },
             isActive = isActive
         )
     }

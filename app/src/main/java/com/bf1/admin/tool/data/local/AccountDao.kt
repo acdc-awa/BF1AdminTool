@@ -33,6 +33,9 @@ interface AccountDao {
     @Query("UPDATE accounts SET isActive = 1 WHERE id = :id")
     suspend fun activate(id: Long)
 
+    @Query("UPDATE accounts SET junoRefreshToken = :token WHERE id = :id")
+    suspend fun updateRefreshToken(id: Long, token: String?)
+
     @Transaction
     suspend fun switchActive(id: Long) {
         deactivateAll()
