@@ -210,26 +210,10 @@ class EAApiService {
     // ═══════════════════════════════════════════════════
 
     /**
-     * 完整认证流程：remid/sid → access_token → persona → auth_code → sessionId。
-     * 用于首次登录 / 手动验证，返回 SessionInfo（含 persona 用于展示、rotated 用于落库）。
+     * 认证流程：Juno access_token + remid/sid → persona + auth_code + sessionId。
+     * auth_code 使用 display=junoWeb%2Flogin 桥接参数直接从 cookie 换取，不依赖 access_token。
      */
-    suspend fun authenticate(remid: String, sid: String): Result<SessionInfo> = runCatching {
-        val cookies = CookieCollector()
-        val cookieHeader = "remid=$remid; sid=$sid"
-        val accessToken = getAccessToken(cookieHeader, cookies)
-        val persona = getPersonaInfo(accessToken)
-        val authCode = getAuthCode(accessToken, cookieHeader, cookies)
-        val sessionId = getSessionId(authCode)
-        SessionInfo(sessionId, persona, cookies.rotated)
-    }
-
-    /**
-     * Juno WebView 登录专用认证流程：
-     * 使用 Juno code 换来的 access_token 获取 persona + auth_code + sessionId。
-     * 绕过 ORIGIN_JS_SDK（Juno 流程的 cookie 对该 client 不可用，login_required）。
-     * auth_code 使用 display=junoWeb%2Flogin 参数直接从 cookie 换取，不依赖 access_token。
-     */
-    suspend fun authenticateWithJunoToken(
+    suspend fun authenticate(
         junoAccessToken: String,
         remid: String,
         sid: String
@@ -237,7 +221,7 @@ class EAApiService {
         val cookies = CookieCollector()
         val cookieHeader = "remid=$remid; sid=$sid"
         val persona = getPersonaInfo(junoAccessToken)
-        val authCode = getAuthCodeJuno(cookieHeader, cookies)
+        val authCode = getAuthCode(cookieHeader, cookies)
         val sessionId = getSessionId(authCode)
         SessionInfo(sessionId, persona, cookies.rotated)
     }
@@ -245,47 +229,8 @@ class EAApiService {
     suspend fun refreshSessionId(remid: String, sid: String): RefreshResult = refreshMutex.withLock {
         val cookies = CookieCollector()
         val cookieHeader = "remid=$remid; sid=$sid"
-        val accessToken = getAccessToken(cookieHeader, cookies)
-        val authCode = getAuthCode(accessToken, cookieHeader, cookies)
+        val authCode = getAuthCode(cookieHeader, cookies)
         RefreshResult(getSessionId(authCode), cookies.rotated)
-    }
-
-    // ═══════════════════════════════════════════════════
-    // EA API：remid/sid → access_token
-    // ═══════════════════════════════════════════════════
-
-    private fun getAccessToken(cookieHeader: String, cookies: CookieCollector): String {
-        val url = "https://accounts.ea.com/connect/auth" +
-                "?client_id=ORIGIN_JS_SDK" +
-                "&response_type=token" +
-                "&redirect_uri=nucleus%3Arest" +
-                "&prompt=none" +
-                "&release_type=prod"
-
-        val request = Request.Builder().url(url)
-            .header("Cookie", cookieHeader)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            // 被动更新 remid/sid（对应 EAappEmulater EaApi.UpdateCookie）
-            cookies.absorb(response)
-
-            val body = response.body?.string()
-                ?: throw Exception("Empty response getting access token")
-            val json = JSONObject(body)
-
-            // login_required → remid/sid 已彻底过期
-            if (json.optString("error") == "login_required") {
-                throw CredentialsExpiredException(
-                    "remid/sid 已过期 (${json.optString("error_code", "")}): " +
-                    json.optString("error", body)
-                )
-            }
-
-            return json.optString("access_token", "").ifEmpty {
-                throw Exception("No access_token in response: $body")
-            }
-        }
     }
 
     /**
@@ -372,32 +317,18 @@ class EAApiService {
     }
 
     /**
-     * EA 原生查 PID：remid/sid → access_token → gateway personas（按 displayName）。
-     *
-     * 脚本 eaid_to_pid.py 的 ORIGIN 路径；ORIGIN token 缺 dp.server.default scope
-     * （403 insufficient_scope，实测恒定触发）时自动换 Juno（EA app）token 重试一次，
-     * 仍失败则抛异常，由上层兜底 gametools。
+     * cookie 查 PID：remid/sid → Juno PKCE → access_token → gateway personas。
      */
     fun resolvePlayerNameByEAID(remid: String, sid: String, eaid: String): EaPidResult {
         val cookies = CookieCollector()
-        val cookieHeader = "remid=$remid; sid=$sid"
-        val accessToken = getAccessToken(cookieHeader, cookies)
-        return try {
-            queryPersonas(accessToken, eaid, cookies)
-        } catch (e: InsufficientScopeException) {
-            // ORIGIN token 缺 dp.server.default scope（实测恒定触发）：换 Juno token 重试一次
-            try {
-                val junoToken = getAccessTokenJuno(remid, sid, cookies)
-                return queryPersonas(junoToken, eaid, cookies)
-            } catch (e2: Exception) {
-                // Juno 重试失败：不归因 ORIGIN（e2 才是真实异常，可能恰是 Juno token 也缺
-                // scope），且把本轮累积的轮换 cookie 带出去，避免 403 恒定场景下每次失败丢一次轮换
-                throw EaPidQueryException(
-                    "EA 原生查询失败（ORIGIN 403 后 Juno 重试也失败）: ${e2.message}",
-                    e2,
-                    cookies.rotated
-                )
-            }
+        try {
+            val junoToken = getAccessTokenJuno(remid, sid, cookies)
+            return queryPersonas(junoToken, eaid, cookies)
+        } catch (e: Exception) {
+            throw EaPidQueryException(
+                "Juno cookie 查 PID 失败: ${e.message}",
+                e, cookies.rotated
+            )
         }
     }
 
@@ -466,46 +397,14 @@ class EAApiService {
     }
 
     // ═══════════════════════════════════════════════════
-    // EA API：access_token → auth_code（换 Battlelog sessionId 用）
+    // EA API：cookie → auth_code（换 Battlelog sessionId 用）
     // ═══════════════════════════════════════════════════
 
-    private fun getAuthCode(
-        accessToken: String,
-        cookieHeader: String,
-        cookies: CookieCollector
-    ): String {
-        val url = "https://accounts.ea.com/connect/auth" +
-                "?access_token=$accessToken" +
-                "&client_id=sparta-backend-as-user-pc" +
-                "&response_type=code" +
-                "&release_type=prod"
-
-        val request = Request.Builder().url(url)
-            .header("Cookie", cookieHeader)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            // 被动更新 remid/sid（对应 EAappEmulater EaApi.UpdateCookie）
-            cookies.absorb(response)
-
-            val location = response.header("Location")
-            if (response.code != 302)
-                throw Exception("Expected 302 for auth code, got ${response.code}")
-            if (location == null)
-                throw Exception("No Location header for auth code")
-            val code = location.substringAfter("code=", "").substringBefore("&")
-            if (code.isEmpty())
-                throw Exception("No code in redirect: $location")
-            return code
-        }
-    }
-
     /**
-     * Juno cookie 换 auth_code（用于 [authenticateWithJunoToken]）。
-     * 使用 display=junoWeb%2Flogin 参数，不依赖 access_token ——
-     * 对应 CardToolApiService.getGatewaySession 的模式。
+     * cookie 换 auth_code。使用 display=junoWeb%2Flogin 桥接参数，
+     * 不需要 access_token —— Juno 和 ORIGIN 体系的 cookie 都接受。
      */
-    private fun getAuthCodeJuno(
+    private fun getAuthCode(
         cookieHeader: String,
         cookies: CookieCollector
     ): String {
@@ -524,12 +423,12 @@ class EAApiService {
             cookies.absorb(response)
             val location = response.header("Location")
             if (response.code != 302)
-                throw Exception("Expected 302 for auth code (juno), got ${response.code}")
+                throw Exception("Expected 302 for auth code, got ${response.code}")
             if (location == null)
-                throw Exception("No Location header for auth code (juno)")
+                throw Exception("No Location header for auth code")
             val code = location.substringAfter("code=", "").substringBefore("&")
             if (code.isEmpty())
-                throw Exception("No code in redirect (juno): $location")
+                throw Exception("No code in redirect: $location")
             return code
         }
     }

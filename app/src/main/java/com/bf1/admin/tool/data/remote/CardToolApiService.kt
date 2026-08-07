@@ -29,7 +29,6 @@ class CardToolApiService {
         private const val GATEWAY_URL = "https://sparta-gw-bf1.battlelog.com/jsonrpc/pc/api"
         private const val OAUTH_URL = "https://accounts.ea.com/connect/auth"
         private const val GOS_CLIENT_ID = "GOS-BlazeServer-BFTUN-PC"
-        private const val GATEWAY_CLIENT_ID = "sparta-backend-as-user-pc"
         private const val UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
     }
@@ -56,13 +55,6 @@ class CardToolApiService {
     /** loginB 结果：Blaze AuthCode + 本次轮换出的新 cookie。 */
     data class BlazeAuthResult(val authCode: String, val rotated: RotatedCookies)
 
-    /** loginG 结果：Gateway sessionId（RSP/GameServer RPC 用）。 */
-    data class GatewaySessionResult(
-        val sessionId: String,
-        val personaId: String,
-        val rotated: RotatedCookies
-    )
-
     /**
      * 用 remid/sid 换取 Blaze AuthCode（对应 CardTool loginB）。
      * authCode 单次有效，供 Blaze socket 的 Authentication.login 使用。
@@ -88,46 +80,6 @@ class CardToolApiService {
                 val authCode = location.substringAfterLast("code=")
                 if (authCode.isEmpty()) throw Exception("重定向中未找到 code: $location")
                 BlazeAuthResult(authCode, rotated)
-            }
-        }
-    }
-
-    /**
-     * 用 remid/sid 换取 Gateway sessionId（对应 CardTool loginG，走 BF1 网关）。
-     */
-    suspend fun getGatewaySession(remid: String, sid: String): Result<GatewaySessionResult> = runCatching {
-        withContext(Dispatchers.IO) {
-            val url = "$OAUTH_URL?response_type=code&locale=zh_CN&client_id=$GATEWAY_CLIENT_ID&display=junoWeb%2Flogin"
-            val request = Request.Builder()
-                .url(url)
-                .header("Cookie", "remid=$remid; sid=$sid;")
-                .header("User-Agent", UA)
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                .header("Cache-Control", "no-cache")
-                .header("Pragma", "no-cache")
-                .header("Connection", "close")
-                .build()
-            client.newCall(request).execute().use { response ->
-                val location = response.header("Location")
-                    ?: throw Exception("Gateway OAuth 未返回重定向（HTTP ${response.code}）")
-                val rotated = accumulateRotatedCookies(RotatedCookies(), response.headers("Set-Cookie"))
-                checkOAuthRedirect(location)
-                val authCode = location.substringAfterLast("code=")
-                if (authCode.isEmpty()) throw Exception("重定向中未找到 code: $location")
-                val result = gatewayRequest(
-                    sessionId = null,
-                    method = "Authentication.getEnvIdViaAuthCode",
-                    params = JSONObject().apply {
-                        put("authCode", authCode)
-                        put("locale", "zh-tw")
-                    }
-                )
-                GatewaySessionResult(
-                    sessionId = result.getString("sessionId"),
-                    personaId = jsonOptString(result, "personaId").orEmpty(),
-                    rotated = rotated
-                )
             }
         }
     }

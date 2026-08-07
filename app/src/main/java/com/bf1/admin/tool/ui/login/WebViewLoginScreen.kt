@@ -193,10 +193,7 @@ fun WebViewLoginScreen(
                                                 rawCookies = "remid=$remid; sid=$sid"
                                             )
                                         } else {
-                                            Log.w(TAG, "[WebView] → loginWithCookiesFromWebView (LEGACY path, NO junoCode!)")
-                                            viewModel.loginWithCookiesFromWebView(
-                                                rawCookies = "remid=$remid; sid=$sid"
-                                            )
+                                            Log.w(TAG, "[WebView] → cookies found but no junoCode — login abandoned")
                                         }
                                     } else if (remaining > 0) {
                                         Log.d(TAG, "[WebView] ✘ no remid/sid yet, retrying in ${delayMs}ms...")
@@ -243,24 +240,16 @@ fun WebViewLoginScreen(
                                 ): Boolean {
                                     val reqUrl = request?.url?.toString() ?: return false
 
-                                    val isJunoCallback = reqUrl.contains("login_successful.html") && reqUrl.contains("code=")
-                                    val isLegacy = reqUrl.startsWith("nucleus:rest") || reqUrl.contains("test.pulse.ea.com")
-
-                                    Log.d(TAG, "[WebView] shouldOverrideUrlLoading: $reqUrl isJunoCallback=$isJunoCallback isLegacy=$isLegacy")
+                                    Log.d(TAG, "[WebView] shouldOverrideUrlLoading: $reqUrl")
 
                                     // 拦截 Juno OAuth 回调：qrc:///html/login_successful.html?code=XXX
-                                    if (isJunoCallback) {
+                                    if (reqUrl.contains("login_successful.html") && reqUrl.contains("code=")) {
                                         val code = reqUrl.substringAfter("code=", "").substringBefore("&")
                                         Log.d(TAG, "[WebView] → Juno callback DETECTED code=${code.take(30)}...")
                                         if (code.isNotEmpty()) {
                                             tryExtractCookies(view, junoCode = code)
                                         }
                                         return true
-                                    }
-                                    // 兼容旧版 ORIGIN 回调
-                                    if (isLegacy) {
-                                        Log.d(TAG, "[WebView] → Legacy callback DETECTED")
-                                        tryExtractCookies(view)
                                     }
                                     return false
                                 }

@@ -37,39 +37,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     /** 由 WebViewLoginScreen 在 Composition 时调用一次，生成 PKCE 授权 URL。 */
     val junoAuthParams: EAApiService.JunoAuthParams = credentialManager.buildJunoAuthUrl()
 
-    fun loginWithCookies(remid: String, sid: String) {
-        Log.d(TAG, "[LoginVM] ▶ loginWithCookies remid=${remid.take(8)}... sid=${sid.take(8)}... (ORIGIN_JS_SDK path)")
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val session = withContext(Dispatchers.IO) {
-                    credentialManager.authenticate(remid, sid).getOrThrow()
-                }
-                val effectiveRemid = session.rotated.remid ?: remid
-                val effectiveSid = session.rotated.sid ?: sid
-                Log.d(TAG, "[LoginVM] ✔ authenticate OK — persona=${session.persona.displayName} pid=${session.persona.personaId}")
-                val accountId = accountRepo.addOrUpdateAccount(
-                    name = session.persona.displayName,
-                    personaId = session.persona.personaId,
-                    remid = effectiveRemid,
-                    sid = effectiveSid
-                )
-                accountRepo.switchActive(accountId)
-                credentialManager.recordSession(accountId, effectiveRemid, session.sessionId)
-                _message.emit("登录成功: ${session.persona.displayName}")
-                _loginSuccess.emit(Unit)
-            } catch (e: Exception) {
-                Log.e(TAG, "[LoginVM] ✘ loginWithCookies FAILED: ${e.message}", e)
-                _message.emit("登录失败: ${e.message}")
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
     /**
-     * WebView Juno 登录完成后调用：同时处理 Juno code 交换（播种 refresh_token）
-     * 和 remid/sid 提取。
+     * WebView Juno 登录完成后调用：
+     * ① exchangeJunoCode → access_token + refresh_token
+     * ② authenticate → persona + sessionId
+     * ③ 建档 + recordSession
+     * ④ saveJunoRefreshToken
      */
     fun onJunoWebViewLogin(code: String, rawCookies: String) {
         Log.d(TAG, "[LoginVM] ▶ onJunoWebViewLogin code=${code.take(20)}... rawCookies=${rawCookies.take(60)}...")
@@ -92,10 +65,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 Log.d(TAG, "[LoginVM] ✔ Step1 OK — accessToken=${tokenResult.accessToken.take(16)}...")
 
-                // Step 2: 用 Juno access_token + cookie 认证（绕过 ORIGIN_JS_SDK）
-                Log.d(TAG, "[LoginVM] → Step2: authenticateWithJunoToken...")
+                // Step 2: 用 Juno access_token + cookie 认证
+                Log.d(TAG, "[LoginVM] → Step2: authenticate...")
                 val session = withContext(Dispatchers.IO) {
-                    credentialManager.authenticateWithJunoToken(
+                    credentialManager.authenticate(
                         tokenResult.accessToken, remid, sid
                     ).getOrThrow()
                 }
@@ -129,16 +102,5 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 _isLoading.value = false
             }
         }
-    }
-
-    fun loginWithCookiesFromWebView(rawCookies: String) {
-        Log.d(TAG, "[LoginVM] ▶ loginWithCookiesFromWebView (LEGACY) rawCookies=${rawCookies.take(60)}...")
-        val result = CookieHelper.parseWebViewCookies(rawCookies)
-        if (result == null) {
-            Log.w(TAG, "[LoginVM] ✘ loginWithCookiesFromWebView — no remid/sid in rawCookies")
-            viewModelScope.launch { _message.emit("未检测到 remid 或 sid cookie") }
-            return
-        }
-        loginWithCookies(result.first, result.second)
     }
 }
