@@ -224,6 +224,51 @@ class CredentialManager(
     fun buildJunoAuthUrl(): EAApiService.JunoAuthParams = eaApi.buildJunoAuthUrl()
 
     /**
+     * 用 Juno authorization_code 换 access_token + refresh_token。
+     * 不落库 —— 调用方拿到 tokenResult 后自行决定 refresh_token 落库时机。
+     */
+    fun exchangeJunoCode(code: String, codeVerifier: String): EAApiService.JunoTokenResult =
+        eaApi.exchangeJunoCode(code, codeVerifier)
+
+    /**
+     * Juno WebView 登录专用认证：用 Juno access_token + remid/sid 换取
+     * persona + sessionId。绕过 ORIGIN_JS_SDK（Juno cookie 对该 client 不可用）。
+     */
+    suspend fun authenticateWithJunoToken(
+        accessToken: String,
+        remid: String,
+        sid: String,
+        accountId: Long? = null
+    ): Result<EAApiService.SessionInfo> {
+        return try {
+            val session = eaApi.authenticateWithJunoToken(accessToken, remid, sid).getOrThrow()
+            if (accountId != null) {
+                withAccountLock(accountId) {
+                    val effectiveRemid = session.rotated.remid ?: remid
+                    val effectiveSid = session.rotated.sid ?: sid
+                    accountRepository.updateCredentials(accountId, effectiveRemid, effectiveSid)
+                    saveSession(accountId, effectiveRemid, session.sessionId)
+                }
+            }
+            Result.success(session)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 直接保存 Juno refresh_token 到账号（不回兑 code）。
+     * [refreshToken] 来自 [exchangeJunoCode] 返回的 [EAApiService.JunoTokenResult.refreshToken]。
+     */
+    suspend fun saveJunoRefreshToken(accountId: Long, refreshToken: String) {
+        withAccountLock(accountId) {
+            accountRepository.saveJunoRefreshToken(accountId, refreshToken)
+        }
+    }
+
+    /**
      * WebView 登录完成后调用：用 code 换 access_token + refresh_token，播种到账号。
      * [accountId] 来自 [AccountRepository.addOrUpdateAccount] 的返回值。
      */
