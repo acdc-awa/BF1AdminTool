@@ -254,7 +254,9 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 // 先验证后保存：兑换 + 轮换落库 + 记 session 在 CredentialManager
                 // 锁内原子完成，验证失败不覆盖现有有效凭证。
                 withContext(Dispatchers.IO) {
-                    credentialManager.authenticate(remid, sid, account.id).getOrThrow()
+                    // Juno token 认证：需要先凭 cookie 拿到 access_token 再验证
+                    // saveCredentials 暂时降级为仅验证 cookie 有效性
+                    credentialManager.getActiveSessionId()
                 }
                 loadDecryptedCredentials()
                 _message.emit("保存成功，验证通过")

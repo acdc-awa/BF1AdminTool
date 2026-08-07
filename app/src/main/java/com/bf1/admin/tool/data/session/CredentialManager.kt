@@ -125,22 +125,21 @@ class CredentialManager(
     // ═══════════════════════════════════════════════════
 
     /**
-     * 完整认证流程（remid/sid → access_token → persona → auth_code → sessionId）。
+     * 认证流程：Juno access_token + remid/sid → persona + auth_code + sessionId。
      *
      * - [accountId] 为 null（首次登录）：只兑换不落库，返回 [EAApiService.SessionInfo]；
      *   账号尚未建档，由登录页用 `session.rotated.remid ?: remid` 建档后再 [recordSession]。
      * - [accountId] 非空（设置页保存凭证）：锁内「兑换 → 落库（轮换值 ?: 用户输入）
      *   → 记 session」原子完成，**先验证后保存** —— 验证失败不覆盖现有有效凭证。
-     *
-     * 锁内要调 suspend 落库，故手写 try/catch 返回 Result（runCatching 的 lambda 非 suspend）。
      */
     suspend fun authenticate(
+        junoAccessToken: String,
         remid: String,
         sid: String,
         accountId: Long? = null
     ): Result<EAApiService.SessionInfo> {
         return try {
-            val session = eaApi.authenticate(remid, sid).getOrThrow()
+            val session = eaApi.authenticate(junoAccessToken, remid, sid).getOrThrow()
             if (accountId != null) {
                 withAccountLock(accountId) {
                     val effectiveRemid = session.rotated.remid ?: remid
@@ -162,7 +161,7 @@ class CredentialManager(
      *
      * 优先级：
      * 1. Juno refresh_token 静默换 access_token → gateway personas（无需 cookie）
-     * 2. ORIGIN_JS_SDK cookie 换 access_token → 403 兜底 Juno cookie
+     * 2. cookie → Juno PKCE → gateway personas（降级路径）
      * 3. gametools 公共 API 兜底
      *
      * EA 原生查询产生的轮换 cookie 在锁内落库。
@@ -231,53 +230,12 @@ class CredentialManager(
         eaApi.exchangeJunoCode(code, codeVerifier)
 
     /**
-     * Juno WebView 登录专用认证：用 Juno access_token + remid/sid 换取
-     * persona + sessionId。绕过 ORIGIN_JS_SDK（Juno cookie 对该 client 不可用）。
-     */
-    suspend fun authenticateWithJunoToken(
-        accessToken: String,
-        remid: String,
-        sid: String,
-        accountId: Long? = null
-    ): Result<EAApiService.SessionInfo> {
-        return try {
-            val session = eaApi.authenticateWithJunoToken(accessToken, remid, sid).getOrThrow()
-            if (accountId != null) {
-                withAccountLock(accountId) {
-                    val effectiveRemid = session.rotated.remid ?: remid
-                    val effectiveSid = session.rotated.sid ?: sid
-                    accountRepository.updateCredentials(accountId, effectiveRemid, effectiveSid)
-                    saveSession(accountId, effectiveRemid, session.sessionId)
-                }
-            }
-            Result.success(session)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    /**
      * 直接保存 Juno refresh_token 到账号（不回兑 code）。
      * [refreshToken] 来自 [exchangeJunoCode] 返回的 [EAApiService.JunoTokenResult.refreshToken]。
      */
     suspend fun saveJunoRefreshToken(accountId: Long, refreshToken: String) {
         withAccountLock(accountId) {
             accountRepository.saveJunoRefreshToken(accountId, refreshToken)
-        }
-    }
-
-    /**
-     * WebView 登录完成后调用：用 code 换 access_token + refresh_token，播种到账号。
-     * [accountId] 来自 [AccountRepository.addOrUpdateAccount] 的返回值。
-     */
-    suspend fun onJunoLoginComplete(accountId: Long, code: String, codeVerifier: String) {
-        withAccountLock(accountId) {
-            val tokenResult = withContext(Dispatchers.IO) {
-                eaApi.exchangeJunoCode(code, codeVerifier)
-            }
-            accountRepository.saveJunoRefreshToken(accountId, tokenResult.refreshToken)
         }
     }
 
