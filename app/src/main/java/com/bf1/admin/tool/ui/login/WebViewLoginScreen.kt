@@ -136,11 +136,19 @@ fun WebViewLoginScreen(
                                 val bridge = EaLoginBridge { }
                                 addJavascriptInterface(bridge, "EaBridge")
 
-                            fun tryExtractCookies(wv: WebView?, junoCode: String? = null) {
+                            /**
+                             * 对应 EAappEmulater SaveEaCookiesAsync：cookie 写入 WebView 存储
+                             * 可能不是瞬间完成的，重试最多 [maxRetries] 次，每次间隔 [delayMs]ms。
+                             */
+                            fun tryExtractCookies(
+                                wv: WebView?,
+                                junoCode: String? = null,
+                                maxRetries: Int = 10,
+                                delayMs: Long = 200
+                            ) {
                                 if (extractionTriggered) return
 
                                 val manager = CookieManager.getInstance()
-                                manager.flush()
 
                                 val cookieUrls = listOf(
                                     "https://accounts.ea.com/connect/auth",
@@ -152,30 +160,38 @@ fun WebViewLoginScreen(
                                     "https://test.pulse.ea.com"
                                 )
 
-                                val allCookies = cookieUrls
-                                    .map { domain -> manager.getCookie(domain) }
-                                    .filterNotNull()
-                                    .joinToString("; ")
+                                fun attempt(remaining: Int) {
+                                    manager.flush()
 
-                                val result = CookieHelper.parseWebViewCookies(allCookies)
-                                if (result != null) {
-                                    extractionTriggered = true
-                                    showingOTCMessage = false
-                                    errorMsg = null
-                                    wv?.loadUrl("about:blank")
-                                    val (remid, sid) = result
-                                    if (junoCode != null) {
-                                        // Juno WebView 登录：同时有 code 和 remid/sid
-                                        viewModel.onJunoWebViewLogin(
-                                            code = junoCode,
-                                            rawCookies = "remid=$remid; sid=$sid"
-                                        )
-                                    } else {
-                                        viewModel.loginWithCookiesFromWebView(
-                                            rawCookies = "remid=$remid; sid=$sid"
-                                        )
+                                    val allCookies = cookieUrls
+                                        .map { domain -> manager.getCookie(domain) }
+                                        .filterNotNull()
+                                        .joinToString("; ")
+
+                                    val result = CookieHelper.parseWebViewCookies(allCookies)
+                                    if (result != null) {
+                                        extractionTriggered = true
+                                        showingOTCMessage = false
+                                        errorMsg = null
+                                        wv?.loadUrl("about:blank")
+                                        val (remid, sid) = result
+                                        if (junoCode != null) {
+                                            // Juno WebView 登录：同时有 code 和 remid/sid
+                                            viewModel.onJunoWebViewLogin(
+                                                code = junoCode,
+                                                rawCookies = "remid=$remid; sid=$sid"
+                                            )
+                                        } else {
+                                            viewModel.loginWithCookiesFromWebView(
+                                                rawCookies = "remid=$remid; sid=$sid"
+                                            )
+                                        }
+                                    } else if (remaining > 0) {
+                                        wv?.postDelayed({ attempt(remaining - 1) }, delayMs)
                                     }
                                 }
+
+                                attempt(maxRetries)
                             }
 
                             webViewClient = object : WebViewClient() {
@@ -196,10 +212,9 @@ fun WebViewLoginScreen(
                                             showingOTCMessage = true
                                             errorMsg = "请完成双因素验证，验证后将自动继续"
                                         }
-                                        return
                                     }
-
-                                    tryExtractCookies(view)
+                                    // Cookie 提取仅在 shouldOverrideUrlLoading 的 Juno 回调 /
+                                    // 旧版 URL 拦截中触发，不在每次页面加载完成时执行
                                 }
 
                                 override fun shouldOverrideUrlLoading(
@@ -224,7 +239,7 @@ fun WebViewLoginScreen(
                                 
                                 override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                                     super.doUpdateVisitedHistory(view, url, isReload)
-                                    tryExtractCookies(view)
+                                    // Cookie 提取仅在 shouldOverrideUrlLoading 中触发
                                 }
 
                                 override fun onReceivedError(
