@@ -146,7 +146,13 @@ fun WebViewLoginScreen(
                                 maxRetries: Int = 10,
                                 delayMs: Long = 200
                             ) {
-                                if (extractionTriggered) return
+                                val caller = if (junoCode != null) "Juno(qrc)" else "LEGACY"
+                                Log.d(TAG, "[WebView] ▶ tryExtractCookies called by=$caller extractionTriggered=$extractionTriggered junoCode=${junoCode?.take(20)}...")
+
+                                if (extractionTriggered) {
+                                    Log.d(TAG, "[WebView] ◼ tryExtractCookies SKIP — already triggered")
+                                    return
+                                }
 
                                 val manager = CookieManager.getInstance()
 
@@ -164,30 +170,39 @@ fun WebViewLoginScreen(
                                     manager.flush()
 
                                     val allCookies = cookieUrls
-                                        .map { domain -> manager.getCookie(domain) }
-                                        .filterNotNull()
-                                        .joinToString("; ")
+                                        .map { domain -> domain to manager.getCookie(domain) }
+                                        .filter { it.second != null }
 
-                                    val result = CookieHelper.parseWebViewCookies(allCookies)
+                                    Log.d(TAG, "[WebView] extract attempt #${maxRetries - remaining} remaining=$remaining domainsWithCookies=${allCookies.map { it.first }}")
+
+                                    val joinedCookies = allCookies
+                                        .joinToString("; ") { it.second!! }
+
+                                    val result = CookieHelper.parseWebViewCookies(joinedCookies)
                                     if (result != null) {
+                                        Log.d(TAG, "[WebView] ✔ cookies FOUND — remid=${result.first.take(8)}... sid=${result.second.take(8)}...")
                                         extractionTriggered = true
                                         showingOTCMessage = false
                                         errorMsg = null
                                         wv?.loadUrl("about:blank")
                                         val (remid, sid) = result
                                         if (junoCode != null) {
-                                            // Juno WebView 登录：同时有 code 和 remid/sid
+                                            Log.d(TAG, "[WebView] → onJunoWebViewLogin (code=${junoCode.take(20)}...)")
                                             viewModel.onJunoWebViewLogin(
                                                 code = junoCode,
                                                 rawCookies = "remid=$remid; sid=$sid"
                                             )
                                         } else {
+                                            Log.w(TAG, "[WebView] → loginWithCookiesFromWebView (LEGACY path, NO junoCode!)")
                                             viewModel.loginWithCookiesFromWebView(
                                                 rawCookies = "remid=$remid; sid=$sid"
                                             )
                                         }
                                     } else if (remaining > 0) {
+                                        Log.d(TAG, "[WebView] ✘ no remid/sid yet, retrying in ${delayMs}ms...")
                                         wv?.postDelayed({ attempt(remaining - 1) }, delayMs)
+                                    } else {
+                                        Log.w(TAG, "[WebView] ✘ EXHAUSTED — all $maxRetries attempts failed, no remid/sid cookies found")
                                     }
                                 }
 
@@ -198,6 +213,7 @@ fun WebViewLoginScreen(
 
                                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                                     super.onPageStarted(view, url, favicon)
+                                    Log.d(TAG, "[WebView] onPageStarted: $url")
                                     view?.evaluateJavascript(INJECTED_JS, null)
                                 }
 
@@ -205,16 +221,20 @@ fun WebViewLoginScreen(
                                     super.onPageFinished(view, url)
                                     val currentUrl = url ?: return
 
-                                    if (currentUrl.contains("dynamicchallenge") ||
-                                        currentUrl.contains("twofactor") ||
-                                        currentUrl.contains("otc")) {
+                                    val isOTC = currentUrl.contains("dynamicchallenge")
+                                    val is2FA = currentUrl.contains("twofactor")
+                                    val isOTC2 = currentUrl.contains("otc")
+                                    val matched2FA = isOTC || is2FA || isOTC2
+
+                                    Log.d(TAG, "[WebView] onPageFinished: $currentUrl otc=$isOTC twofactor=$is2FA otc2=$isOTC2 extractionTriggered=$extractionTriggered")
+
+                                    if (matched2FA) {
                                         if (!showingOTCMessage) {
                                             showingOTCMessage = true
                                             errorMsg = "请完成双因素验证，验证后将自动继续"
+                                            Log.d(TAG, "[WebView] ⚑ OTC/2FA page detected — showing prompt")
                                         }
                                     }
-                                    // Cookie 提取仅在 shouldOverrideUrlLoading 的 Juno 回调 /
-                                    // 旧版 URL 拦截中触发，不在每次页面加载完成时执行
                                 }
 
                                 override fun shouldOverrideUrlLoading(
@@ -222,16 +242,24 @@ fun WebViewLoginScreen(
                                     request: WebResourceRequest?
                                 ): Boolean {
                                     val reqUrl = request?.url?.toString() ?: return false
+
+                                    val isJunoCallback = reqUrl.contains("login_successful.html") && reqUrl.contains("code=")
+                                    val isLegacy = reqUrl.startsWith("nucleus:rest") || reqUrl.contains("test.pulse.ea.com")
+
+                                    Log.d(TAG, "[WebView] shouldOverrideUrlLoading: $reqUrl isJunoCallback=$isJunoCallback isLegacy=$isLegacy")
+
                                     // 拦截 Juno OAuth 回调：qrc:///html/login_successful.html?code=XXX
-                                    if (reqUrl.contains("login_successful.html") && reqUrl.contains("code=")) {
+                                    if (isJunoCallback) {
                                         val code = reqUrl.substringAfter("code=", "").substringBefore("&")
+                                        Log.d(TAG, "[WebView] → Juno callback DETECTED code=${code.take(30)}...")
                                         if (code.isNotEmpty()) {
                                             tryExtractCookies(view, junoCode = code)
                                         }
                                         return true
                                     }
                                     // 兼容旧版 ORIGIN 回调
-                                    if (reqUrl.startsWith("nucleus:rest") || reqUrl.contains("test.pulse.ea.com")) {
+                                    if (isLegacy) {
+                                        Log.d(TAG, "[WebView] → Legacy callback DETECTED")
                                         tryExtractCookies(view)
                                     }
                                     return false
@@ -239,7 +267,7 @@ fun WebViewLoginScreen(
                                 
                                 override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                                     super.doUpdateVisitedHistory(view, url, isReload)
-                                    // Cookie 提取仅在 shouldOverrideUrlLoading 中触发
+                                    Log.d(TAG, "[WebView] doUpdateVisitedHistory: $url isReload=$isReload")
                                 }
 
                                 override fun onReceivedError(
@@ -257,6 +285,7 @@ fun WebViewLoginScreen(
                             CookieManager.getInstance().flush()
                             evaluateJavascript("localStorage.clear(); sessionStorage.clear();", null)
 
+                            Log.d(TAG, "[WebView] ▶ Loading Juno auth URL: ${junoUrl.take(200)}...")
                             loadUrl(junoUrl)
                         }
                     } catch (e: Exception) {

@@ -223,6 +223,25 @@ class EAApiService {
         SessionInfo(sessionId, persona, cookies.rotated)
     }
 
+    /**
+     * Juno WebView 登录专用认证流程：
+     * 使用 Juno code 换来的 access_token 获取 persona + auth_code + sessionId。
+     * 绕过 ORIGIN_JS_SDK（Juno 流程的 cookie 对该 client 不可用，login_required）。
+     * auth_code 使用 display=junoWeb%2Flogin 参数直接从 cookie 换取，不依赖 access_token。
+     */
+    suspend fun authenticateWithJunoToken(
+        junoAccessToken: String,
+        remid: String,
+        sid: String
+    ): Result<SessionInfo> = runCatching {
+        val cookies = CookieCollector()
+        val cookieHeader = "remid=$remid; sid=$sid"
+        val persona = getPersonaInfo(junoAccessToken)
+        val authCode = getAuthCodeJuno(cookieHeader, cookies)
+        val sessionId = getSessionId(authCode)
+        SessionInfo(sessionId, persona, cookies.rotated)
+    }
+
     suspend fun refreshSessionId(remid: String, sid: String): RefreshResult = refreshMutex.withLock {
         val cookies = CookieCollector()
         val cookieHeader = "remid=$remid; sid=$sid"
@@ -477,6 +496,40 @@ class EAApiService {
             val code = location.substringAfter("code=", "").substringBefore("&")
             if (code.isEmpty())
                 throw Exception("No code in redirect: $location")
+            return code
+        }
+    }
+
+    /**
+     * Juno cookie 换 auth_code（用于 [authenticateWithJunoToken]）。
+     * 使用 display=junoWeb%2Flogin 参数，不依赖 access_token ——
+     * 对应 CardToolApiService.getGatewaySession 的模式。
+     */
+    private fun getAuthCodeJuno(
+        cookieHeader: String,
+        cookies: CookieCollector
+    ): String {
+        val url = "https://accounts.ea.com/connect/auth" +
+                "?client_id=sparta-backend-as-user-pc" +
+                "&response_type=code" +
+                "&display=junoWeb%2Flogin" +
+                "&prompt=none" +
+                "&release_type=prod"
+
+        val request = Request.Builder().url(url)
+            .header("Cookie", cookieHeader)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            cookies.absorb(response)
+            val location = response.header("Location")
+            if (response.code != 302)
+                throw Exception("Expected 302 for auth code (juno), got ${response.code}")
+            if (location == null)
+                throw Exception("No Location header for auth code (juno)")
+            val code = location.substringAfter("code=", "").substringBefore("&")
+            if (code.isEmpty())
+                throw Exception("No code in redirect (juno): $location")
             return code
         }
     }

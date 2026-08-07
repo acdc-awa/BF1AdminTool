@@ -1,6 +1,7 @@
 package com.bf1.admin.tool.ui.login
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bf1.admin.tool.BF1AdminApp
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val TAG = "BF1Debug"
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as BF1AdminApp
@@ -35,6 +38,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     val junoAuthParams: EAApiService.JunoAuthParams = credentialManager.buildJunoAuthUrl()
 
     fun loginWithCookies(remid: String, sid: String) {
+        Log.d(TAG, "[LoginVM] ▶ loginWithCookies remid=${remid.take(8)}... sid=${sid.take(8)}... (ORIGIN_JS_SDK path)")
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -43,6 +47,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val effectiveRemid = session.rotated.remid ?: remid
                 val effectiveSid = session.rotated.sid ?: sid
+                Log.d(TAG, "[LoginVM] ✔ authenticate OK — persona=${session.persona.displayName} pid=${session.persona.personaId}")
                 val accountId = accountRepo.addOrUpdateAccount(
                     name = session.persona.displayName,
                     personaId = session.persona.personaId,
@@ -54,6 +59,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 _message.emit("登录成功: ${session.persona.displayName}")
                 _loginSuccess.emit(Unit)
             } catch (e: Exception) {
+                Log.e(TAG, "[LoginVM] ✘ loginWithCookies FAILED: ${e.message}", e)
                 _message.emit("登录失败: ${e.message}")
             } finally {
                 _isLoading.value = false
@@ -66,22 +72,38 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * 和 remid/sid 提取。
      */
     fun onJunoWebViewLogin(code: String, rawCookies: String) {
+        Log.d(TAG, "[LoginVM] ▶ onJunoWebViewLogin code=${code.take(20)}... rawCookies=${rawCookies.take(60)}...")
         val cookiePair = CookieHelper.parseWebViewCookies(rawCookies)
         if (cookiePair == null) {
+            Log.w(TAG, "[LoginVM] ✘ onJunoWebViewLogin — no remid/sid in rawCookies")
             viewModelScope.launch { _message.emit("未检测到 remid 或 sid cookie") }
             return
         }
         val (remid, sid) = cookiePair
+        Log.d(TAG, "[LoginVM] → onJunoWebViewLogin remid=${remid.take(8)}... sid=${sid.take(8)}...")
 
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // 先用 ORIGIN cookie 认证拿到 persona + session
+                // Step 1: Juno code 换 access_token + refresh_token
+                Log.d(TAG, "[LoginVM] → Step1: exchangeJunoCode...")
+                val tokenResult = withContext(Dispatchers.IO) {
+                    credentialManager.exchangeJunoCode(code, junoAuthParams.codeVerifier)
+                }
+                Log.d(TAG, "[LoginVM] ✔ Step1 OK — accessToken=${tokenResult.accessToken.take(16)}...")
+
+                // Step 2: 用 Juno access_token + cookie 认证（绕过 ORIGIN_JS_SDK）
+                Log.d(TAG, "[LoginVM] → Step2: authenticateWithJunoToken...")
                 val session = withContext(Dispatchers.IO) {
-                    credentialManager.authenticate(remid, sid).getOrThrow()
+                    credentialManager.authenticateWithJunoToken(
+                        tokenResult.accessToken, remid, sid
+                    ).getOrThrow()
                 }
                 val effectiveRemid = session.rotated.remid ?: remid
                 val effectiveSid = session.rotated.sid ?: sid
+                Log.d(TAG, "[LoginVM] ✔ Step2 OK — persona=${session.persona.displayName} pid=${session.persona.personaId}")
+
+                // Step 3: 建档 + 保存
                 val accountId = accountRepo.addOrUpdateAccount(
                     name = session.persona.displayName,
                     personaId = session.persona.personaId,
@@ -91,23 +113,17 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 accountRepo.switchActive(accountId)
                 credentialManager.recordSession(accountId, effectiveRemid, session.sessionId)
 
-                // 同时播种 Juno refresh_token（后续 PID 查询静默续期用）
-                try {
-                    withContext(Dispatchers.IO) {
-                        credentialManager.onJunoLoginComplete(
-                            accountId, code, junoAuthParams.codeVerifier
-                        )
-                    }
-                } catch (e: Exception) {
-                    // refresh_token 播种失败不阻塞登录（PID 查询退化为 gametools）
-                    _message.emit("登录成功: ${session.persona.displayName}（refresh_token 播种失败: ${e.message}）")
-                    _loginSuccess.emit(Unit)
-                    return@launch
+                // Step 4: 播种 refresh_token
+                Log.d(TAG, "[LoginVM] → Step4: saveJunoRefreshToken...")
+                withContext(Dispatchers.IO) {
+                    credentialManager.saveJunoRefreshToken(accountId, tokenResult.refreshToken)
                 }
+                Log.d(TAG, "[LoginVM] ✔ Step4 OK — refresh_token saved")
 
                 _message.emit("登录成功: ${session.persona.displayName}")
                 _loginSuccess.emit(Unit)
             } catch (e: Exception) {
+                Log.e(TAG, "[LoginVM] ✘ onJunoWebViewLogin FAILED: ${e.message}", e)
                 _message.emit("登录失败: ${e.message}")
             } finally {
                 _isLoading.value = false
@@ -116,8 +132,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loginWithCookiesFromWebView(rawCookies: String) {
+        Log.d(TAG, "[LoginVM] ▶ loginWithCookiesFromWebView (LEGACY) rawCookies=${rawCookies.take(60)}...")
         val result = CookieHelper.parseWebViewCookies(rawCookies)
         if (result == null) {
+            Log.w(TAG, "[LoginVM] ✘ loginWithCookiesFromWebView — no remid/sid in rawCookies")
             viewModelScope.launch { _message.emit("未检测到 remid 或 sid cookie") }
             return
         }
