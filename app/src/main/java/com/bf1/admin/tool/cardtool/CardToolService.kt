@@ -44,6 +44,61 @@ class CardToolService(
         runScoped(config, onEvent, diagnosticOnly = false)
     }
 
+    /**
+     * 手动锚定（写操作）：不跑卡服循环，直接对服务器**当前轮换**执行一次锚定，
+     * 用于自动锚定失败后补救。只需要 Gateway Session，不需要 Blaze 连接。
+     */
+    suspend fun anchorNow(config: CardToolConfig, onEvent: (Event) -> Unit) {
+        try {
+            onEvent(Event.Phase("手动锚定"))
+            onEvent(Event.Log("手动锚定：获取 Gateway Session"))
+            val sessionId = credentialManager.getActiveSessionId()
+
+            onEvent(Event.Log("手动锚定：查询服务器（getFullServerDetails + getServerDetails）"))
+            val rsp = api.getFullServerDetails(sessionId, config.gameId)
+            val current = api.getServerDetails(sessionId, config.gameId)
+            onEvent(Event.Log("服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})"))
+            onEvent(
+                Event.Log(
+                    "当前状态: ${current.slots.occupied}/${current.slots.soldierMax} " +
+                        "(${current.rotation.size}图) mapMode=${current.mapMode} guid=${current.guid}"
+                )
+            )
+
+            if (current.guid.isEmpty()) {
+                onEvent(Event.Finished(false, "手动锚定失败：服务器 guid 为空"))
+                return
+            }
+            if (current.rotation.isEmpty()) {
+                onEvent(Event.Finished(false, "手动锚定失败：当前轮换为空"))
+                return
+            }
+
+            val pinned = buildPinnedRotation(current.rotation, config.mode)
+            onEvent(Event.Log("锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}"))
+            val anchorPayload = buildServerUpdatePayload(
+                serverId = rsp.serverId,
+                name = rsp.serverSettings.name,
+                description = rsp.serverSettings.description,
+                message = "${System.currentTimeMillis()} CardTool",
+                password = rsp.serverSettings.password,
+                customGameSettings = rsp.serverSettings.customGameSettings,
+                playerLimit = config.player,
+                mapsOverride = pinned
+            )
+            val error = performAnchor(sessionId, current.guid, anchorPayload, "手动锚定", onEvent)
+            if (error == null) {
+                onEvent(Event.Finished(true, "手动锚定完成，请尽快进入服务器"))
+            } else {
+                onEvent(Event.Finished(false, "手动锚定失败: $error"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            onEvent(Event.Finished(false, e.message ?: "手动锚定失败"))
+        }
+    }
+
     private suspend fun runScoped(config: CardToolConfig, onEvent: (Event) -> Unit, diagnosticOnly: Boolean) {
         try {
             onEvent(Event.Log("正在初始化"))
@@ -269,17 +324,9 @@ class CardToolService(
                         playerLimit = config.player,
                         mapsOverride = pinned
                     )
-                    try {
-                        onEvent(Event.Log("[#$loopCount] RSP.chooseLevel #1 persistedGameId=${current.guid} levelIndex=0"))
-                        api.chooseLevel(sessionId, current.guid, 0)
-                        // 与 CardTool 一致：锚定中的 updateServer 单独吞错（原版此处 .catch(()=>{})），
-                        // 成败只由两次 chooseLevel 决定。
-                        updateQuiet(anchorPayload, "锚定")
-                        delay(1000)
-                        onEvent(Event.Log("[#$loopCount] RSP.chooseLevel #2 persistedGameId=${current.guid} levelIndex=0"))
-                        api.chooseLevel(sessionId, current.guid, 0)
-                    } catch (e: Exception) {
-                        onEvent(Event.Log("[#$loopCount] 锚定失败，请手动锚定: ${describe(e)}", isError = true))
+                    val error = performAnchor(sessionId, current.guid, anchorPayload, "#$loopCount 自动锚定", onEvent)
+                    if (error != null) {
+                        onEvent(Event.Log("[#$loopCount] 锚定失败，可点「手动锚定」重试: $error", isError = true))
                     }
                     onEvent(Event.Log("已完成，请尽快进入服务器"))
                     onEvent(Event.Finished(true, "卡服完成，请尽快进入服务器"))
@@ -393,6 +440,33 @@ class CardToolService(
 
     private fun requireGameId(config: CardToolConfig): Long =
         config.gameId.toLongOrNull() ?: throw IllegalArgumentException("gameId 无效：${config.gameId}")
+
+    /**
+     * 执行一次锚定：chooseLevel → updateServer（吞错）→ 等 1 秒 → chooseLevel。
+     * 成败只由两次 chooseLevel 决定；updateServer 的服务端错误（如 banner 鉴权
+     * ERR_AUTHORIZATION_REQUIRED）一律忽略，与原版 CardTool 一致。
+     * @return 成功返回 null，失败返回错误描述
+     */
+    private suspend fun performAnchor(
+        sessionId: String,
+        persistedGameId: String,
+        anchorPayload: Map<String, Any?>,
+        tag: String,
+        onEvent: (Event) -> Unit
+    ): String? = try {
+        onEvent(Event.Log("[$tag] RSP.chooseLevel #1 persistedGameId=$persistedGameId levelIndex=0"))
+        api.chooseLevel(sessionId, persistedGameId, 0)
+        runCatching { api.updateServer(sessionId, anchorPayload) }
+            .onFailure {
+                onEvent(Event.Log("[$tag] RSP.updateServer 失败(已忽略): ${describe(it)}", isError = true))
+            }
+        delay(1000)
+        onEvent(Event.Log("[$tag] RSP.chooseLevel #2 persistedGameId=$persistedGameId levelIndex=0"))
+        api.chooseLevel(sessionId, persistedGameId, 0)
+        null
+    } catch (e: Exception) {
+        describe(e)
+    }
 
     /** 错误详情：GatewayError 展开原始 code/message/method，便于定位服务端拒绝原因。 */
     private fun describe(e: Throwable): String = when (e) {
