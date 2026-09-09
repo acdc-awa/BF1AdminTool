@@ -46,19 +46,17 @@ val MAP_BY_PLAYERS: Map<Int, MapEntry> = mapOf(
     0x18 to MapEntry("TDM0", "MP_Naval")
 )
 
-/** 进服方式：cardtool=原版观战占位（默认，与 CardTool 3.16 一致）；direct=模拟客户端直连。 */
-enum class JoinStyle { CARDTOOL, DIRECT }
-
 /**
  * 卡服配置（对应 CardTool config.ini）。
  * gameId 为 14 位服务器 GUID（进服/查服用），serverId 为 8 位短 ID（RSP 更新用）。
+ *
+ * 进服固定走纯 Blaze 直连（bf1_direct_join_stay_forever.py 的方式，不发 HTTP reserveSlot）。
  */
 data class CardToolConfig(
     val gameId: String,
     val mode: Int,
     val player: Int = 0x40,
     val minMap: Int = 1,
-    val joinStyle: JoinStyle = JoinStyle.CARDTOOL,
     val joinTimeoutMs: Long = 12_000,
     val joinPollIntervalMs: Long = 500,
     val primeGids: List<String> = emptyList(),
