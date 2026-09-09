@@ -91,7 +91,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
     /** 完整卡服流程（写操作）。 */
     fun startCard(config: CardToolConfig) = start("准备中") { service.run(config, it) }
 
-    /** 手动锚定：只对当前轮换锚定一次（自动锚定失败后的补救），不跑卡服循环。 */
+    /** 手动锚定：先 Blaze 直连进服占位，再对当前轮换锚定一次（自动锚定失败后的补救）。 */
     fun startManualAnchor(config: CardToolConfig) = start("手动锚定") { service.anchorNow(config, it) }
 
     private fun start(phase: String, action: suspend ((CardToolService.Event) -> Unit) -> Unit) {
