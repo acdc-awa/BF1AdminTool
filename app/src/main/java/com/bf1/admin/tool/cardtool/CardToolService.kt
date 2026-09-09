@@ -13,13 +13,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
 /**
- * 卡服流程编排，对应 CardTool.js 主流程：
- * 登录（网关 sessionId + Blaze authCode，均由 CredentialManager 生产）→
- * 连接 Blaze 登录 → 管理员校验 → 预热（可选）→ 占位进服循环 → 锚定地图轮换；
+ * 卡服流程编排：
+ * 登录（网关 sessionId + Blaze authCode，均由 CredentialManager 生产）→ 连接 Blaze 登录 →
+ * 管理员校验 → 预热（可选，先直连进暖服几次）→ 纯 Blaze 直连进服循环 → 锚定地图轮换；
  * 断线/会话失效自动重建。
  *
- * [run] 会修改服务器轮换（写操作）；[runDiagnostic] 只登录并查询，不改服务器，用于实机验证链路。
- * 通过 [onEvent] 把日志/阶段/结果推给 UI；协程取消即停止（UI 停止按钮）。
+ * 进服对齐 bf1_direct_join_stay_forever.py：只用 Blaze 直连
+ * （setClientState → updateNetworkInfo → getFullGameData → joinGame(gent=0) → 轮询 PROS 确认），
+ * 不发 HTTP 进服请求（无 Game.reserveSlot），避免观战占位特征被风控。
+ *
+ * [run] 会修改服务器轮换（写操作）；[anchorNow] 只对当前轮换锚定一次；
+ * [runDiagnostic] 只登录并查询，不改服务器。通过 [onEvent] 把日志/阶段/结果推给 UI；
+ * 协程取消即停止（UI 停止按钮）。
  */
 class CardToolService(
     private val credentialManager: CredentialManager,
@@ -232,7 +237,7 @@ class CardToolService(
         onEvent(Event.Log("发送初始 RSP.updateServer（原版在循环前调用一次）"))
         updateQuiet(payloadBase, "初始")
 
-        // 4. 主循环（严格对齐 CardTool.js：reserveSlot → joinGame → updateServer → sleep 2s → getServerDetails）
+        // 4. 主循环（Blaze 直连进服 → updateServer → sleep 2s → getServerDetails → 锚定/重试）
         onEvent(Event.Phase("开始卡服"))
         var loopCount = 0
         while (true) {
@@ -250,40 +255,20 @@ class CardToolService(
                     onEvent(Event.Log("[#$loopCount] 重连成功: ${re.login.displayName} (personaId=${re.login.personaId})"))
                 }
 
-                // 原版无条件先 reserveSlot(spectator)
-                onEvent(Event.Log("[#$loopCount] Game.reserveSlot(spectator)"))
-                runCatching { api.reserveSlot(sessionId, config.gameId) }
-                    .onSuccess {
-                        if (it != "Joined") onEvent(Event.Log("[#$loopCount] reserveSlot 未返回 Joined: $it", isError = true))
-                    }
-                    .onFailure {
-                        onEvent(Event.Log("[#$loopCount] reserveSlot 失败: ${describe(it)}", isError = true))
-                    }
-
-                // 进服：cardtool 用原版观战占位包（不等待 PROS 确认）；direct 保留旧直连路径
-                val joinResult = if (config.joinStyle == JoinStyle.CARDTOOL) {
-                    onEvent(Event.Log("[#$loopCount] GameManager.joinGame（原版观战占位包，不等待 PROS）"))
-                    client.joinGameCardtool(
-                        gameId = gameId,
-                        personaId = login.personaId,
-                        platformId = login.nucleusId,
-                        displayName = login.displayName,
-                        userExtendedData = login.userExtendedData,
-                        connectionGroupId = login.connectionGroupId
-                    )
-                } else {
-                    onEvent(Event.Log("[#$loopCount] GameManager.joinGame（direct 直连，等待 PROS 确认）"))
-                    client.joinGame(
-                        gameId = gameId,
-                        personaId = login.personaId,
-                        platformId = login.nucleusId,
-                        connectionGroupId = login.connectionGroupId,
-                        userExtendedData = login.userExtendedData,
-                        protocolVersionCache = protocolVersionCache,
-                        joinConfirmTimeoutMs = config.joinTimeoutMs,
-                        joinPollIntervalMs = config.joinPollIntervalMs
-                    )
-                }
+                // 纯 Blaze 直连进服（对齐 bf1_direct_join_stay_forever.py）：
+                // 不发任何 HTTP 进服请求、不 reserveSlot；joinGame 内部完成
+                // setClientState/updateNetworkInfo → getFullGameData → joinGame(gent=0) → 轮询 PROS 确认
+                onEvent(Event.Log("[#$loopCount] Blaze 直连进服（无 HTTP reserveSlot）"))
+                val joinResult = client.joinGame(
+                    gameId = gameId,
+                    personaId = login.personaId,
+                    platformId = login.nucleusId,
+                    connectionGroupId = login.connectionGroupId,
+                    userExtendedData = login.userExtendedData,
+                    protocolVersionCache = protocolVersionCache,
+                    joinConfirmTimeoutMs = config.joinTimeoutMs,
+                    joinPollIntervalMs = config.joinPollIntervalMs
+                )
                 joinResult.protocolVersion?.let { protocolVersionCache = it }
                 if (!joinResult.ok) {
                     onEvent(Event.Log("[#$loopCount] 进服失败: ${joinResult.reason}", isError = true))
@@ -387,28 +372,17 @@ class CardToolService(
             for (gid in gids) {
                 currentCoroutineContext().ensureActive()
                 val g = gid.toLongOrNull() ?: continue
-                onEvent(Event.Log("预热 第$round/${config.primeRounds}轮 进入暖服 $gid"))
-                val r = if (config.joinStyle == JoinStyle.CARDTOOL) {
-                    client.joinGameCardtool(
-                        gameId = g,
-                        personaId = login.personaId,
-                        platformId = login.nucleusId,
-                        displayName = login.displayName,
-                        userExtendedData = login.userExtendedData,
-                        connectionGroupId = login.connectionGroupId
-                    )
-                } else {
-                    client.joinGame(
-                        gameId = g,
-                        personaId = login.personaId,
-                        platformId = login.nucleusId,
-                        connectionGroupId = login.connectionGroupId,
-                        userExtendedData = login.userExtendedData,
-                        protocolVersionCache = "",
-                        joinConfirmTimeoutMs = 12_000,
-                        joinPollIntervalMs = 500
-                    )
-                }
+                onEvent(Event.Log("预热 第$round/${config.primeRounds}轮 Blaze 直连进暖服 $gid"))
+                val r = client.joinGame(
+                    gameId = g,
+                    personaId = login.personaId,
+                    platformId = login.nucleusId,
+                    connectionGroupId = login.connectionGroupId,
+                    userExtendedData = login.userExtendedData,
+                    protocolVersionCache = "",
+                    joinConfirmTimeoutMs = 12_000,
+                    joinPollIntervalMs = 500
+                )
                 if (!r.ok) {
                     onEvent(Event.Log("预热 进服失败($gid): ${r.reason}", isError = true))
                     continue

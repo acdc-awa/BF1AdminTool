@@ -233,19 +233,6 @@ class CardToolApiService {
         )
     }
 
-    /** 预留观战位（cardtool 进服方式的前置步骤）。 */
-    fun reserveSlot(sessionId: String, gameId: String): String {
-        val result = gatewayRequest(
-            sessionId,
-            "Game.reserveSlot",
-            JSONObject().apply {
-                put("gameId", gameId)
-                put("settings", JSONObject().apply { put("role", "spectator") })
-            }
-        )
-        return result.optString("status", "")
-    }
-
     /** 离开服务器（Game.leaveGame）。 */
     fun leaveGame(sessionId: String, gameId: String) {
         gatewayRequest(sessionId, "Game.leaveGame", JSONObject().apply { put("gameId", gameId) })

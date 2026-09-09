@@ -31,7 +31,6 @@ import java.util.Date
 import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bf1.admin.tool.cardtool.CardToolConfig
-import com.bf1.admin.tool.cardtool.JoinStyle
 import com.bf1.admin.tool.cardtool.MODE_PRETTY_NAMES
 import com.bf1.admin.tool.cardtool.MODES
 import com.bf1.admin.tool.ui.common.ServerSelector
@@ -59,7 +58,6 @@ fun CardToolScreen(
     var selectedMode by rememberSaveable { mutableIntStateOf(0x2) }
     var player by rememberSaveable { mutableIntStateOf(0x40) }
     var minMap by rememberSaveable { mutableStateOf("24") }
-    var joinStyle by rememberSaveable { mutableStateOf(JoinStyle.CARDTOOL) }
     var primeGids by rememberSaveable { mutableStateOf("") }
     var primeRounds by rememberSaveable { mutableStateOf("2") }
     var primeStay by rememberSaveable { mutableStateOf("5") }
@@ -85,7 +83,6 @@ fun CardToolScreen(
         mode = selectedMode,
         player = player,
         minMap = minMap,
-        joinStyle = joinStyle,
         primeGids = primeGids,
         primeRounds = primeRounds,
         primeStay = primeStay
@@ -502,7 +499,6 @@ private fun buildConfig(
     mode: Int,
     player: Int,
     minMap: String,
-    joinStyle: JoinStyle,
     primeGids: String,
     primeRounds: String,
     primeStay: String
@@ -512,7 +508,6 @@ private fun buildConfig(
         mode = mode,
         player = player,
         minMap = minMap.toIntOrNull() ?: 1,
-        joinStyle = joinStyle,
         primeGids = primeGids.split(',', '，', ' ', '\n').map { it.trim() }.filter { it.isNotEmpty() },
         primeRounds = primeRounds.toIntOrNull() ?: 2,
         primeStaySeconds = primeStay.toIntOrNull() ?: 5
