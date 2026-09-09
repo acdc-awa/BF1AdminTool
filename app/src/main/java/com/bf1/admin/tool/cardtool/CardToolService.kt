@@ -18,11 +18,12 @@ import kotlinx.coroutines.ensureActive
  * 管理员校验 → 预热（可选，先直连进暖服几次）→ 纯 Blaze 直连进服循环 → 锚定地图轮换；
  * 断线/会话失效自动重建。
  *
- * 进服对齐 bf1_direct_join_stay_forever.py：只用 Blaze 直连
- * （setClientState → updateNetworkInfo → getFullGameData → joinGame(gent=0) → 轮询 PROS 确认），
- * 不发 HTTP 进服请求（无 Game.reserveSlot），避免观战占位特征被风控。
+ * 进服对齐 bf1_direct_join_stay_forever.py：只用 Blaze 直连。每个 socket 会话由
+ * [openBlazeSession] 统一建立（连接 → 登录 → setClientState/updateNetworkInfo 两件套），
+ * 之后 getFullGameData → joinGame(gent=0) → 轮询 PROS 确认；不发 HTTP 进服请求
+ * （无 Game.reserveSlot），避免观战占位特征被风控。
  *
- * [run] 会修改服务器轮换（写操作）；[anchorNow] 只对当前轮换锚定一次；
+ * [run] 会修改服务器轮换（写操作）；[anchorNow] 先直连进服占位、再对当前轮换锚定一次；
  * [runDiagnostic] 只登录并查询，不改服务器。通过 [onEvent] 把日志/阶段/结果推给 UI；
  * 协程取消即停止（UI 停止按钮）。
  */
@@ -37,7 +38,8 @@ class CardToolService(
         data class Finished(val success: Boolean, val message: String) : Event()
     }
 
-    private class Reconnected(val socket: BlazeSocket, val client: BlazeClient, val login: BlazeLoginResult)
+    /** 一次已建立的 Blaze 会话：连接 + 登录 + 两件套上报都已完成。 */
+    private class BlazeSession(val socket: BlazeSocket, val client: BlazeClient, val login: BlazeLoginResult)
 
     /** 只读诊断：登录 + 管理员校验 + getFullGameData，不改任何服务器状态。 */
     suspend fun runDiagnostic(config: CardToolConfig, onEvent: (Event) -> Unit) {
@@ -68,16 +70,11 @@ class CardToolService(
             onEvent(Event.Log("服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})"))
 
             val adminIds = rsp.adminList.map { it.personaId }.toSet() + rsp.ownerPersonaId
-            onEvent(Event.Log("手动锚定：获取 Blaze AuthCode..."))
-            val authCode = credentialManager.acquireBlazeAuthCode()
-            val (host, port) = api.getBlazeServerAddress()
-            onEvent(Event.Log("手动锚定：连接 Blaze $host:$port"))
-            val socket = BlazeSocket(host, port)
+            // 与自动卡服共用同一条会话建立路径：连接 → 登录 → 两件套上报（setClientState + updateNetworkInfo）
+            val session = openBlazeSession(onEvent)
+            val client = session.client
+            val login = session.login
             try {
-                socket.connect()
-                val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
-                val login = client.login(authCode)
-                onEvent(Event.Log("手动锚定：已登录 ${login.displayName} (personaId=${login.personaId})"))
                 if (login.personaId.toString() !in adminIds) {
                     onEvent(Event.Log("手动锚定：警告，当前账号不是该服务器管理员", isError = true))
                 }
@@ -138,7 +135,7 @@ class CardToolService(
                     onEvent(Event.Finished(false, "手动锚定失败: $error"))
                 }
             } finally {
-                socket.close()
+                session.socket.close()
             }
         } catch (e: CancellationException) {
             throw e
@@ -153,33 +150,15 @@ class CardToolService(
             // 网关 sessionId 与管理页共用同一份缓存（同一网关、同一换法），
             // Blaze authCode 一次性、每次登录现取。
             val sessionId = credentialManager.getActiveSessionId()
-            onEvent(Event.Log("获取 Blaze AuthCode..."))
-            val blazeAuthCode = credentialManager.acquireBlazeAuthCode()
-
-            val (host, port) = api.getBlazeServerAddress()
-            onEvent(Event.Log("Blaze 服务器: $host:$port"))
-
-            onEvent(Event.Log("Blaze AuthCode 长度: ${blazeAuthCode.length}"))
-            onEvent(Event.Log("连接 Blaze 并登录..."))
-            val socket = BlazeSocket(host, port)
+            val session = openBlazeSession(onEvent)
             try {
-                socket.connect()
-                onEvent(Event.Log("Blaze TCP/TLS 已连接"))
-                val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
-                val login = client.login(blazeAuthCode)
-                onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))
-                // 每个 socket 会话只发一次：Util.setClientState(MODE=1) + UserSessions.updateNetworkInfo
-                // （对应 bf1_direct_join_stay_forever.py 的 connect_session，join 之前）
-                runCatching { client.reportClientState() }
-                    .onFailure { onEvent(Event.Log("上报客户端状态失败: ${it.message}", isError = true)) }
-
                 if (diagnosticOnly) {
-                    runDiagnosticBody(config, login, client, sessionId, onEvent)
+                    runDiagnosticBody(config, session.login, session.client, sessionId, onEvent)
                 } else {
-                    runCardBody(config, login, client, socket, sessionId, onEvent)
+                    runCardBody(config, session.login, session.client, session.socket, sessionId, onEvent)
                 }
             } finally {
-                socket.close()
+                session.socket.close()
             }
         } catch (e: CancellationException) {
             throw e
@@ -303,9 +282,6 @@ class CardToolService(
                     login = re.login
                     socketDead = false
                     onEvent(Event.Log("[#$loopCount] 重连成功: ${re.login.displayName} (personaId=${re.login.personaId})"))
-                    // 每个新 socket 会话都重发一次两件套（对齐 Python connect_session）
-                    runCatching { client.reportClientState() }
-                        .onFailure { onEvent(Event.Log("[#$loopCount] 上报客户端状态失败: ${it.message}", isError = true)) }
                 }
 
                 // 纯 Blaze 直连进服（对齐 bf1_direct_join_stay_forever.py）：
@@ -457,16 +433,37 @@ class CardToolService(
     // 工具
     // ═══════════════════════════════════════════════════
 
-    private suspend fun reconnect(onEvent: (Event) -> Unit): Reconnected {
-        // authCode 一次性：每次断线重连都必须现取新码（轮换落库由 CredentialManager 负责）
+    /**
+     * 建立一次 Blaze 会话：取一次性 authCode → 连接 → 登录 → 发「两件套」
+     * （Util.setClientState(MODE=1) + UserSessions.updateNetworkInfo，对应 Python connect_session）。
+     *
+     * 自动卡服、断线重连、手动锚定都必须走这里，保证三条路径的进服前置条件完全一致。
+     */
+    private suspend fun openBlazeSession(onEvent: (Event) -> Unit): BlazeSession {
+        onEvent(Event.Log("获取 Blaze AuthCode..."))
+        // authCode 一次性：每次建立/重建会话都必须现取新码（轮换落库由 CredentialManager 负责）
         val authCode = credentialManager.acquireBlazeAuthCode()
         val (host, port) = api.getBlazeServerAddress()
+        onEvent(Event.Log("Blaze 服务器: $host:$port"))
+        onEvent(Event.Log("连接 Blaze 并登录..."))
         val socket = BlazeSocket(host, port)
-        socket.connect()
-        val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
-        val login = client.login(authCode)
-        return Reconnected(socket, client, login)
+        try {
+            socket.connect()
+            onEvent(Event.Log("Blaze TCP/TLS 已连接"))
+            val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
+            val login = client.login(authCode)
+            onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))
+            // 每个 socket 会话只发一次两件套（对齐 Python connect_session，join 之前）
+            runCatching { client.reportClientState() }
+                .onFailure { onEvent(Event.Log("上报客户端状态失败: ${it.message}", isError = true)) }
+            return BlazeSession(socket, client, login)
+        } catch (e: Exception) {
+            socket.close()
+            throw e
+        }
     }
+
+    private suspend fun reconnect(onEvent: (Event) -> Unit): BlazeSession = openBlazeSession(onEvent)
 
     private fun requireGameId(config: CardToolConfig): Long =
         config.gameId.toLongOrNull() ?: throw IllegalArgumentException("gameId 无效：${config.gameId}")
