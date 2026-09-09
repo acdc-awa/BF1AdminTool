@@ -185,13 +185,13 @@ fun CardToolScreen(
                     Text("开始卡行动")
                 }
             }
-            // 自动锚定失败后的补救：只对当前轮换锚定一次，不跑卡服循环
+            // 自动锚定失败后的补救：先直连进服占位（锚定需要有人在服内），再锚定当前轮换
             OutlinedButton(
                 onClick = { viewModel.startManualAnchor(currentConfig()) },
                 enabled = gameIdValid,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("手动锚定当前轮换")
+                Text("手动锚定当前轮换（先进服）")
             }
         }
 

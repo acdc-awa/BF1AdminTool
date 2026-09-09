@@ -51,51 +51,94 @@ class CardToolService(
 
     /**
      * 手动锚定（写操作）：不跑卡服循环，直接对服务器**当前轮换**执行一次锚定，
-     * 用于自动锚定失败后补救。只需要 Gateway Session，不需要 Blaze 连接。
+     * 用于自动锚定失败后补救。
+     *
+     * 锚定必须在「服里有人」时执行（否则 chooseLevel 打进的轮换不会被服务器保留），
+     * 所以这里先纯 Blaze 直连进服占位，确认进服成功后再锚定，锚定后短暂保持连接再断开。
      */
     suspend fun anchorNow(config: CardToolConfig, onEvent: (Event) -> Unit) {
         try {
             onEvent(Event.Phase("手动锚定"))
+            val gameId = requireGameId(config)
             onEvent(Event.Log("手动锚定：获取 Gateway Session"))
             val sessionId = credentialManager.getActiveSessionId()
 
-            onEvent(Event.Log("手动锚定：查询服务器（getFullServerDetails + getServerDetails）"))
+            onEvent(Event.Log("手动锚定：查询服务器（getFullServerDetails）"))
             val rsp = api.getFullServerDetails(sessionId, config.gameId)
-            val current = api.getServerDetails(sessionId, config.gameId)
             onEvent(Event.Log("服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})"))
-            onEvent(
-                Event.Log(
-                    "当前状态: ${current.slots.occupied}/${current.slots.soldierMax} " +
-                        "(${current.rotation.size}图) mapMode=${current.mapMode} guid=${current.guid}"
+
+            val adminIds = rsp.adminList.map { it.personaId }.toSet() + rsp.ownerPersonaId
+            onEvent(Event.Log("手动锚定：获取 Blaze AuthCode..."))
+            val authCode = credentialManager.acquireBlazeAuthCode()
+            val (host, port) = api.getBlazeServerAddress()
+            onEvent(Event.Log("手动锚定：连接 Blaze $host:$port"))
+            val socket = BlazeSocket(host, port)
+            try {
+                socket.connect()
+                val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
+                val login = client.login(authCode)
+                onEvent(Event.Log("手动锚定：已登录 ${login.displayName} (personaId=${login.personaId})"))
+                if (login.personaId.toString() !in adminIds) {
+                    onEvent(Event.Log("手动锚定：警告，当前账号不是该服务器管理员", isError = true))
+                }
+
+                // 锚定前置条件：服里必须有人。直连进服占位（对齐 bf1_direct_join_stay_forever.py）。
+                onEvent(Event.Log("手动锚定：Blaze 直连进服占位（锚定需要有人在服内）"))
+                val joinResult = client.joinGame(
+                    gameId = gameId,
+                    personaId = login.personaId,
+                    platformId = login.nucleusId,
+                    connectionGroupId = login.connectionGroupId,
+                    userExtendedData = login.userExtendedData,
+                    protocolVersionCache = "",
+                    joinConfirmTimeoutMs = config.joinTimeoutMs,
+                    joinPollIntervalMs = config.joinPollIntervalMs
                 )
-            )
+                if (!joinResult.ok) {
+                    onEvent(Event.Finished(false, "手动锚定失败：进服失败 ${joinResult.reason}"))
+                    return
+                }
+                onEvent(Event.Log("手动锚定：进服成功，等待服务器状态稳定（2 秒）"))
+                delay(2000)
 
-            if (current.guid.isEmpty()) {
-                onEvent(Event.Finished(false, "手动锚定失败：服务器 guid 为空"))
-                return
-            }
-            if (current.rotation.isEmpty()) {
-                onEvent(Event.Finished(false, "手动锚定失败：当前轮换为空"))
-                return
-            }
+                val current = api.getServerDetails(sessionId, config.gameId)
+                onEvent(
+                    Event.Log(
+                        "当前状态: ${current.slots.occupied}/${current.slots.soldierMax} " +
+                            "(${current.rotation.size}图) mapMode=${current.mapMode} guid=${current.guid}"
+                    )
+                )
+                if (current.guid.isEmpty()) {
+                    onEvent(Event.Finished(false, "手动锚定失败：服务器 guid 为空"))
+                    return
+                }
+                if (current.rotation.isEmpty()) {
+                    onEvent(Event.Finished(false, "手动锚定失败：当前轮换为空"))
+                    return
+                }
 
-            val pinned = buildPinnedRotation(current.rotation, config.mode)
-            onEvent(Event.Log("锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}"))
-            val anchorPayload = buildServerUpdatePayload(
-                serverId = rsp.serverId,
-                name = rsp.serverSettings.name,
-                description = rsp.serverSettings.description,
-                message = "${System.currentTimeMillis()} CardTool",
-                password = rsp.serverSettings.password,
-                customGameSettings = rsp.serverSettings.customGameSettings,
-                playerLimit = config.player,
-                mapsOverride = pinned
-            )
-            val error = performAnchor(sessionId, current.guid, anchorPayload, "手动锚定", onEvent)
-            if (error == null) {
-                onEvent(Event.Finished(true, "手动锚定完成，请尽快进入服务器"))
-            } else {
-                onEvent(Event.Finished(false, "手动锚定失败: $error"))
+                val pinned = buildPinnedRotation(current.rotation, config.mode)
+                onEvent(Event.Log("锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}"))
+                val anchorPayload = buildServerUpdatePayload(
+                    serverId = rsp.serverId,
+                    name = rsp.serverSettings.name,
+                    description = rsp.serverSettings.description,
+                    message = "${System.currentTimeMillis()} CardTool",
+                    password = rsp.serverSettings.password,
+                    customGameSettings = rsp.serverSettings.customGameSettings,
+                    playerLimit = config.player,
+                    mapsOverride = pinned
+                )
+                val error = performAnchor(sessionId, current.guid, anchorPayload, "手动锚定", onEvent)
+                if (error == null) {
+                    onEvent(Event.Log("手动锚定：锚定完成，保持占位 3 秒后断开"))
+                    delay(3000)
+                    onEvent(Event.Finished(true, "手动锚定完成，请尽快进入服务器"))
+                } else {
+                    onEvent(Event.Finished(false, "手动锚定失败: $error"))
+                }
+            } finally {
+                socket.close()
             }
         } catch (e: CancellationException) {
             throw e
