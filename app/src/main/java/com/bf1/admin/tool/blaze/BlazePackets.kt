@@ -105,4 +105,62 @@ object BlazePackets {
             "USER 3" to emptyUser
         )
     }
+
+    // ═══════════════════════════════════════════════════
+    // 进服后「伪装真客户端」状态包（对应 Python send_state_bundle）
+    // ═══════════════════════════════════════════════════
+
+    /** GameManager.setPlayerAttributes：单个玩家属性（key/value 均为字符串）。 */
+    fun setPlayerAttributes(
+        gameId: Long,
+        personaId: Long,
+        key: String,
+        value: String
+    ): Map<String, Any?> = mapOf(
+        "ATTR 511" to mapOf(key to value),
+        "GID  0" to gameId,
+        "PID  0" to personaId
+    )
+
+    /** GameManager.meshEndpointsConnected：告知已连上某个连接组的 mesh。 */
+    fun meshEndpointsConnected(gameId: Long, connectionGroupId: Long): Map<String, Any?> = mapOf(
+        "FLGS 0" to 0L,
+        "GID  0" to gameId,
+        "QOSI 3" to mapOf("LOSS a" to 0.0f, "PING 0" to 0L),
+        "TCG  9" to listOf(30722L, 2L, connectionGroupId)
+    )
+
+    /** GameManager.updateMeshConnection：把自己标成已连接。 */
+    fun updateMeshConnection(
+        gameId: Long,
+        personaId: Long,
+        flags: Long = 0L,
+        status: Long = 0L
+    ): Map<String, Any?> = mapOf(
+        "GID  0" to gameId,
+        "TARG 43" to listOf(
+            mapOf("FLGS 0" to flags, "PID  0" to personaId, "STAT 0" to status)
+        )
+    )
+
+    /** GameManager.reportTelemetry：上报到远端连接组的链路质量。 */
+    fun reportTelemetry(
+        gameId: Long,
+        localConnectionGroupId: Long,
+        remoteConnectionGroupId: Long,
+        latency: Int = 40
+    ): Map<String, Any?> = mapOf(
+        "GID  0" to gameId,
+        "LCID 0" to localConnectionGroupId,
+        "NTOP 0" to 1L,
+        "RPTS 43" to listOf(
+            mapOf(
+                "LATC 0" to latency.toLong(),
+                "PKTL 0" to 0L,
+                "RCID 0" to remoteConnectionGroupId,
+                "RCVD 0" to 24L,
+                "SENT 0" to 24L
+            )
+        )
+    )
 }

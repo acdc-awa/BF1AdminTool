@@ -56,6 +56,18 @@ object BlazeParsing {
         }
     }
 
+    /**
+     * 玩家记录是否"像真客户端在服里"（对应 Python joined_like_client）：
+     * 有 PNET 字段、CONG 非 0、或 STAT ∈ (2, 4)。
+     */
+    fun joinedLikeClient(player: Map<String, Any?>?): Boolean {
+        if (player == null) return false
+        val hasPnet = player.keys.any { it.startsWith("PNET") }
+        val cong = player.entries.firstOrNull { it.key.startsWith("CONG") }?.value as? Number
+        val stat = player.entries.firstOrNull { it.key.startsWith("STAT") }?.value as? Number
+        return hasPnet || (cong?.toLong() ?: 0L) != 0L || stat?.toLong() == 2L || stat?.toLong() == 4L
+    }
+
     /** 从 gameInfo 提取协议版本 VSTR。 */
     fun protocolVersionFrom(gameInfo: Map<String, Any?>?): String =
         gameInfo?.get("VSTR 1")?.toString().orEmpty()
@@ -70,12 +82,14 @@ data class BlazeLoginResult(
     val userExtendedData: List<Long>?
 )
 
-/** getFullGameData 结果。 */
+/** getFullGameData 结果；出错时 [errorName]/[errc] 非空、数据为空。 */
 data class FullGameData(
     val gameInfo: Map<String, Any?>?,
     val players: List<Map<String, Any?>>,
     val protocolVersion: String,
-    val roles: List<String>
+    val roles: List<String>,
+    val errorName: String? = null,
+    val errc: Long? = null
 )
 
 /** joinGame 结果。 */
@@ -84,7 +98,8 @@ data class JoinResult(
     val reason: String?,
     val protocolVersion: String?,
     val prosSeen: Boolean,
-    val socketDead: Boolean
+    val socketDead: Boolean,
+    val roles: List<String> = emptyList()
 )
 
 /**
@@ -159,26 +174,33 @@ class BlazeClient(
         send("UserSessions.updateNetworkInfo", BlazePackets.updateNetworkInfo(), timeoutMs = 8_000)
     }
 
-    /** GameManager.getFullGameData。 */
+    /** GameManager.getFullGameData；出错时不抛异常，把 errorName/errc 带回给调用方。 */
     suspend fun getFullGameData(gameId: Long, timeoutMs: Long = 20_000): FullGameData {
         val resp = send("GameManager.getFullGameData", BlazePackets.getFullGameData(gameId), timeoutMs = timeoutMs)
-        val data = resp.data ?: throw BlazeProtocolException("getFullGameData 无数据")
+        if (resp.error != null) {
+            return FullGameData(null, emptyList(), "", emptyList(), resp.error.name, resp.errc)
+        }
+        val data = resp.data
+            ?: return FullGameData(null, emptyList(), "", emptyList(), "NO_DATA", null)
         val lgam = data["LGAM 43"] as? List<*> ?: emptyList<Any?>()
         val block = lgam.firstOrNull() as? Map<*, *>
-        val gameInfo = block?.get("GAME 3") as? Map<*, *>
+        val gameInfo = (block?.get("GAME 3") as? Map<*, *>)?.mapKeys { it.key.toString() }
         @Suppress("UNCHECKED_CAST")
         val players = (block?.get("PROS 43") as? List<*>)?.filterIsInstance<Map<String, Any?>>() ?: emptyList()
         return FullGameData(
-            gameInfo = gameInfo?.mapKeys { it.key.toString() },
+            gameInfo = gameInfo,
             players = players,
             protocolVersion = gameInfo?.get("VSTR 1")?.toString().orEmpty(),
-            roles = BlazeParsing.rolesFromGameInfo(gameInfo?.mapKeys { it.key.toString() })
+            roles = BlazeParsing.rolesFromGameInfo(gameInfo)
         )
     }
 
     /**
-     * GameManager.joinGame（direct 直连）。
-     * [connectionGroup] 优先 lookupUsers 前三项，否则回退 [30722, 2, connectionGroupId]。
+     * GameManager.joinGame（纯 Blaze 直连）。
+     *
+     * 进服前用 getFullGameData 拿真实协议版本与角色；满员（[PARTICIPANT_SLOTS_FULL_ERRC]）
+     * 或查询失败时复用 [protocolVersionCache]/[rolesCache]（对应 Python direct_join 的复用逻辑）。
+     * joinGame 报错后由 [shouldRebuildSession] 判定是否要重建整个会话。
      */
     suspend fun joinGame(
         gameId: Long,
@@ -187,14 +209,22 @@ class BlazeClient(
         connectionGroupId: Long,
         userExtendedData: List<Long>?,
         protocolVersionCache: String,
+        rolesCache: List<String> = emptyList(),
+        postJoinState: Boolean = true,
         joinConfirmTimeoutMs: Long = 12_000,
         joinPollIntervalMs: Long = 500
     ): JoinResult {
-        // 进服前像真实客户端一样上报客户端状态与网络信息（对应 CardTool joinServer 前两步）
-        runCatching { reportClientState() }
         val gameData = runCatching { getFullGameData(gameId) }.getOrNull()
-        val protocolVersion = gameData?.protocolVersion?.ifEmpty { protocolVersionCache } ?: protocolVersionCache
-        val role = gameData?.roles?.firstOrNull { it == "soldier" } ?: gameData?.roles?.firstOrNull() ?: "soldier"
+        val slotsFull = gameData?.errc == PARTICIPANT_SLOTS_FULL_ERRC
+        val protocolVersion = gameData?.protocolVersion?.takeIf { it.isNotEmpty() }
+            ?: protocolVersionCache.ifEmpty { DEFAULT_PROTOCOL_VERSION }
+        val roles = gameData?.roles?.takeIf { it.isNotEmpty() } ?: rolesCache
+        if (slotsFull) {
+            debug("getFullGameData 满员(errc=$PARTICIPANT_SLOTS_FULL_ERRC)，复用 protocolVersion=$protocolVersion roles=$roles")
+        } else if (gameData?.errorName != null) {
+            debugError("getFullGameData 失败: ${gameData.errorName}，复用 protocolVersion=$protocolVersion roles=$roles")
+        }
+        val role = roles.firstOrNull { it == "soldier" } ?: roles.firstOrNull() ?: "soldier"
         val connectionGroup = if (userExtendedData != null && userExtendedData.size >= 3) {
             userExtendedData.take(3)
         } else {
@@ -220,35 +250,121 @@ class BlazeClient(
                 timeoutMs = 12_000
             )
         } catch (e: BlazeConnectionClosedException) {
-            return JoinResult(false, "连接已断开", protocolVersion, false, true)
+            return JoinResult(false, "连接已断开", protocolVersion, false, true, roles)
         }
         if (resp.error != null) {
-            val dead = resp.error.name.contains("AUTHENTICATION_REQUIRED")
             return JoinResult(
                 ok = false,
                 reason = "joinGame 返回错误: ${resp.error.message}",
                 protocolVersion = protocolVersion,
                 prosSeen = false,
-                socketDead = dead
+                socketDead = shouldRebuildSession(resp.error.name),
+                roles = roles
             )
         }
 
-        // 确认进服：轮询 PROS 直到 personaId 出现
-        val seen = waitUntilSeen(gameId, personaId, joinConfirmTimeoutMs, joinPollIntervalMs)
-        if (seen) {
-            return JoinResult(true, null, protocolVersion, true, false)
+        // 进服后伪装真客户端（对应 Python send_state_bundle）；失败只记日志，不影响进服判定
+        if (postJoinState) {
+            runCatching { sendPostJoinState(gameId, personaId, connectionGroup.last(), gameData?.gameInfo) }
+                .onFailure { debugError("post-join 状态包失败: ${it.message}") }
+            // 等 UserSessions 的 game 绑定通知（best-effort，对应 Python wait_session_game_binding）
+            runCatching { waitSessionGameBinding(gameId, personaId, 1_500) }
+                .onSuccess { if (it) debug("已收到 UserSessionExtendedDataUpdate 绑定通知") }
+        }
+
+        // 确认进服：轮询 PROS，PID 出现即视为进入；满员时 getFullGameData 查不到，按已进入处理
+        val deadline = System.currentTimeMillis() + joinConfirmTimeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val state = runCatching { getFullGameData(gameId) }.getOrNull()
+            if (state?.errc == PARTICIPANT_SLOTS_FULL_ERRC) {
+                debug("确认阶段服务器满员(errc=$PARTICIPANT_SLOTS_FULL_ERRC)，按已进入处理")
+                return JoinResult(true, null, protocolVersion, true, false, roles)
+            }
+            val player = state?.players?.let { playerRecord(it, personaId) }
+            if (player != null) {
+                val likeClient = BlazeParsing.joinedLikeClient(player)
+                debug("确认进服: PID 已在 PROS (joinedLikeClient=$likeClient)")
+                return JoinResult(true, null, protocolVersion, true, false, roles)
+            }
+            kotlinx.coroutines.delay(joinPollIntervalMs)
         }
         return JoinResult(
             ok = false,
             reason = "进服确认超时，未在玩家列表中找到 personaId=$personaId",
             protocolVersion = protocolVersion,
             prosSeen = false,
-            socketDead = false
+            socketDead = false,
+            roles = roles
         )
     }
 
+    /** 等 UserSessions.UserSessionExtendedDataUpdate 通知里出现该 persona+gameId 的绑定。 */
+    suspend fun waitSessionGameBinding(gameId: Long, personaId: Long, timeoutMs: Long): Boolean {
+        val packet = socket.waitForNotification(timeoutMs) { p ->
+            p.method == "UserSessions.UserSessionExtendedDataUpdate" &&
+                sessionHasGame(p.data, personaId, gameId)
+        }
+        return packet != null
+    }
+
+    /** 进服后「伪装真客户端」状态包：mesh / 玩家属性 / MODE=3 / telemetry。 */
+    private suspend fun sendPostJoinState(
+        gameId: Long,
+        personaId: Long,
+        localConnectionGroupId: Long,
+        gameInfo: Map<String, Any?>?
+    ) {
+        val groups = connectionGroups(gameInfo, localConnectionGroupId)
+        for (group in groups) {
+            runCatching { send("GameManager.meshEndpointsConnected", BlazePackets.meshEndpointsConnected(gameId, group), 8_000) }
+        }
+        runCatching { send("GameManager.updateMeshConnection", BlazePackets.updateMeshConnection(gameId, personaId), 8_000) }
+        for ((key, value) in listOf(
+            "latency" to "40",
+            "InGame" to "true",
+            "OriginalPartyLeader" to "false",
+            "UserState" to "Loading",
+            "UserState" to "Playing"
+        )) {
+            runCatching { send("GameManager.setPlayerAttributes", BlazePackets.setPlayerAttributes(gameId, personaId, key, value), 8_000) }
+        }
+        runCatching { send("Util.setClientState", BlazePackets.setClientState(3), 8_000) }
+        val telemetryTargets = groups.filter { it != localConnectionGroupId }.ifEmpty { groups }
+        for (target in telemetryTargets) {
+            runCatching { send("GameManager.reportTelemetry", BlazePackets.reportTelemetry(gameId, localConnectionGroupId, target), 8_000) }
+        }
+    }
+
+    private fun playerRecord(players: List<Map<String, Any?>>, personaId: Long): Map<String, Any?>? =
+        players.firstOrNull { (it["PID  0"] as? Number)?.toLong() == personaId }
+
+    private fun sessionHasGame(data: Map<String, Any?>?, personaId: Long, gameId: Long): Boolean {
+        val d = data ?: return false
+        if ((d["USID"] as? Number)?.toLong() != personaId && (d["USID 0"] as? Number)?.toLong() != personaId) return false
+        val sessionData = d["DATA"] as? Map<*, *> ?: d["DATA 3"] as? Map<*, *> ?: return false
+        val ulst = sessionData["ULST"] as? List<*> ?: sessionData["ULST 43"] as? List<*> ?: return false
+        return ulst.any { item ->
+            item is List<*> && item.size >= 3 &&
+                item[0]?.toString() == "GameManager" &&
+                (item[2] as? Number)?.toLong() == gameId
+        }
+    }
+
+    private fun connectionGroups(gameInfo: Map<String, Any?>?, localConnectionGroupId: Long): List<Long> {
+        val groups = LinkedHashSet<Long>()
+        if (localConnectionGroupId != 0L) groups.add(localConnectionGroupId)
+        for (key in listOf("PHST", "THST", "DHST")) {
+            val entry = gameInfo?.entries?.firstOrNull { it.key.startsWith(key) }?.value as? Map<*, *>
+            val cong = (entry?.get("CONG") as? Number)?.toLong()
+                ?: (entry?.get("CONG 0") as? Number)?.toLong()
+            if (cong != null && cong != 0L) groups.add(cong)
+        }
+        return groups.toList()
+    }
+
     /** 轮询 getFullGameData 直到 personaId 出现在玩家列表或超时。 */
-    suspend fun waitUntilSeen(gameId: Long, personaId: Long, timeoutMs: Long, pollMs: Long): Boolean {        val deadline = System.currentTimeMillis() + timeoutMs
+    suspend fun waitUntilSeen(gameId: Long, personaId: Long, timeoutMs: Long, pollMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val state = runCatching { getFullGameData(gameId) }.getOrNull()
             if (state != null && BlazeParsing.playerInPros(state.players, personaId)) return true
@@ -265,6 +381,25 @@ class BlazeClient(
         timeoutMs: Long = requestTimeoutMs
     ): BlazePacket = withTimeout(timeoutMs) {
         socket.send(BlazeRequest(method = method, data = data)).awaitResult()
+    }
+
+    companion object {
+        /** GameManager 4.4 PARTICIPANT_SLOTS_FULL：服务器满员时 getFullGameData 返回的 errc（0x40040000）。 */
+        const val PARTICIPANT_SLOTS_FULL_ERRC = 1074003968L
+
+        /** 默认协议版本（与 CardTool / Python DEFAULT_PROTOCOL_VERSION 一致）。 */
+        const val DEFAULT_PROTOCOL_VERSION = "3779779"
+
+        /**
+         * joinGame 报错后是否需要重建整个 Blaze 会话（对应 Python stay_forever 的
+         * close_session + connect_session），而不是在同一 socket 上继续重试。
+         */
+        fun shouldRebuildSession(errorName: String): Boolean =
+            errorName.contains("AUTHENTICATION_REQUIRED") ||
+                errorName.contains("UNRESPONSIVE_GAME_STATE") ||
+                errorName.contains("INVALID_SESSION") ||
+                errorName.contains("SESSION_EXPIRED") ||
+                errorName.contains("TIMEOUT")
     }
 }
 

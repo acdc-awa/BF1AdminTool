@@ -125,6 +125,10 @@ class CardToolService(
                 val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
                 val login = client.login(blazeAuthCode)
                 onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))
+                // 每个 socket 会话只发一次：Util.setClientState(MODE=1) + UserSessions.updateNetworkInfo
+                // （对应 bf1_direct_join_stay_forever.py 的 connect_session，join 之前）
+                runCatching { client.reportClientState() }
+                    .onFailure { onEvent(Event.Log("上报客户端状态失败: ${it.message}", isError = true)) }
 
                 if (diagnosticOnly) {
                     runDiagnosticBody(config, login, client, sessionId, onEvent)
@@ -160,9 +164,11 @@ class CardToolService(
         val isAdmin = login.personaId.toString() in adminIds
         onEvent(Event.Log(if (isAdmin) "管理员身份已确认" else "警告：当前账号不是该服务器管理员"))
 
-        onEvent(Event.Log("上报客户端状态并查询服务器..."))
-        client.reportClientState()
+        onEvent(Event.Log("查询服务器..."))
         val data = client.getFullGameData(gameId)
+        if (data.errorName != null) {
+            onEvent(Event.Log("getFullGameData 失败: ${data.errorName} (errc=${data.errc})", isError = true))
+        }
         onEvent(
             Event.Log(
                 "getFullGameData: protocolVersion=${data.protocolVersion} " +
@@ -193,6 +199,7 @@ class CardToolService(
         var socket = initialSocket
         var sessionId = initialSessionId
         var protocolVersionCache = ""
+        var rolesCache: List<String> = emptyList()
         var socketDead = false
         // updateServer 在服务端常因 banner 鉴权失败（ERR_AUTHORIZATION_REQUIRED），原版一律忽略；
         // 相同错误只提示一次，避免刷屏。
@@ -253,6 +260,9 @@ class CardToolService(
                     login = re.login
                     socketDead = false
                     onEvent(Event.Log("[#$loopCount] 重连成功: ${re.login.displayName} (personaId=${re.login.personaId})"))
+                    // 每个新 socket 会话都重发一次两件套（对齐 Python connect_session）
+                    runCatching { client.reportClientState() }
+                        .onFailure { onEvent(Event.Log("[#$loopCount] 上报客户端状态失败: ${it.message}", isError = true)) }
                 }
 
                 // 纯 Blaze 直连进服（对齐 bf1_direct_join_stay_forever.py）：
@@ -266,10 +276,12 @@ class CardToolService(
                     connectionGroupId = login.connectionGroupId,
                     userExtendedData = login.userExtendedData,
                     protocolVersionCache = protocolVersionCache,
+                    rolesCache = rolesCache,
                     joinConfirmTimeoutMs = config.joinTimeoutMs,
                     joinPollIntervalMs = config.joinPollIntervalMs
                 )
                 joinResult.protocolVersion?.let { protocolVersionCache = it }
+                if (joinResult.roles.isNotEmpty()) rolesCache = joinResult.roles
                 if (!joinResult.ok) {
                     onEvent(Event.Log("[#$loopCount] 进服失败: ${joinResult.reason}", isError = true))
                     if (joinResult.socketDead) {
@@ -322,7 +334,7 @@ class CardToolService(
                 onEvent(
                     Event.Log(
                         "[#$loopCount] 条件不满足(mapMode=${current.mapMode} 需要 $modeName，" +
-                            "${current.rotation.size}/$config.minMap 图)，离开重试"
+                            "${current.rotation.size}/${config.minMap} 图)，离开重试"
                     )
                 )
                 runCatching { api.leaveGame(sessionId, config.gameId) }
@@ -380,6 +392,7 @@ class CardToolService(
                     connectionGroupId = login.connectionGroupId,
                     userExtendedData = login.userExtendedData,
                     protocolVersionCache = "",
+                    postJoinState = false,
                     joinConfirmTimeoutMs = 12_000,
                     joinPollIntervalMs = 500
                 )

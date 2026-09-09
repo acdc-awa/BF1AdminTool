@@ -2,6 +2,7 @@ package com.bf1.admin.tool.blaze
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -64,5 +65,23 @@ class BlazePacketsTest {
         @Suppress("UNCHECKED_CAST")
         val pljd = packet(gent = 2)["PLJD 3"] as Map<String, Any?>
         assertEquals(2L, pljd["GENT 0"])
+    }
+
+    /** 进服后状态包必须能被 BlazeCodec 编码（尤其 mesh 里的 Float 字段 "LOSS a"）。 */
+    @Test
+    fun postJoinStatePacketsEncodeWithoutError() {
+        val gameId = 11295245190321L
+        val personaId = 1005613115321L
+        val packets = listOf(
+            "GameManager.setPlayerAttributes" to BlazePackets.setPlayerAttributes(gameId, personaId, "InGame", "true"),
+            "GameManager.meshEndpointsConnected" to BlazePackets.meshEndpointsConnected(gameId, 12L),
+            "GameManager.updateMeshConnection" to BlazePackets.updateMeshConnection(gameId, personaId),
+            "GameManager.reportTelemetry" to BlazePackets.reportTelemetry(gameId, 12L, 34L),
+            "Util.setClientState" to BlazePackets.setClientState(3)
+        )
+        packets.forEach { (method, data) ->
+            val bytes = BlazeCodec.encode(method, BlazeCodec.TYPE_SEND_COMMAND, 1, data)
+            assertTrue("$method 编码结果过短", bytes.size > BlazeCodec.HEADER_SIZE)
+        }
     }
 }

@@ -5,6 +5,8 @@ import java.net.InetSocketAddress
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.LinkedBlockingDeque
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManager
@@ -60,6 +62,8 @@ class BlazeSocket(
 
     private val lock = Any()
     private val pending = HashMap<Int, CompletableFuture<BlazePacket>>()
+    /** 未匹配到 pending 的包（Notify* / UserSessionExtendedDataUpdate 等通知），供 [waitForNotification] 消费。 */
+    private val notifications = LinkedBlockingDeque<BlazePacket>(MAX_NOTIFICATIONS)
     private var socket: SSLSocket? = null
     private var id = 1
     private var closed = false
@@ -106,6 +110,20 @@ class BlazeSocket(
         return future
     }
 
+    /**
+     * 等待匹配的通知包（对应 Python 的 PacketCollector.wait_for）。
+     * 只消费 [notifications] 队列；不匹配的包会被丢弃。超时返回 null。
+     */
+    fun waitForNotification(timeoutMs: Long, predicate: (BlazePacket) -> Boolean): BlazePacket? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0) return null
+            val packet = notifications.pollFirst(remaining, TimeUnit.MILLISECONDS) ?: return null
+            if (predicate(packet)) return packet
+        }
+    }
+
     override fun close() {
         synchronized(lock) {
             if (closed) return
@@ -137,8 +155,12 @@ class BlazeSocket(
                 for (packetBytes in framer.feed(chunk.copyOfRange(0, n))) {
                     val packet = BlazeCodec.decode(packetBytes)
                     if (packet.method == "KeepAlive") continue
-                    synchronized(lock) {
-                        pending.remove(packet.id)?.complete(packet)
+                    val future = synchronized(lock) { pending.remove(packet.id) }
+                    if (future != null) {
+                        future.complete(packet)
+                    } else {
+                        // 通知包（无对应请求）：入队供 waitForNotification；队列满则丢最旧
+                        while (!notifications.offerLast(packet)) notifications.pollFirst()
                     }
                 }
             }
@@ -184,6 +206,7 @@ class BlazeSocket(
 
     companion object {
         private const val KEEPALIVE_INTERVAL_MS = 10_000L
+        private const val MAX_NOTIFICATIONS = 256
         // 与 CardTool.js keepalive 一致：16 字节 Header，type = 0x80 (SendKeepAlive)
         val KEEPALIVE_BYTES: ByteArray = byteArrayOf(
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
