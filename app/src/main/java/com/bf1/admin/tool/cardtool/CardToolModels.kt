@@ -46,8 +46,8 @@ val MAP_BY_PLAYERS: Map<Int, MapEntry> = mapOf(
     0x18 to MapEntry("TDM0", "MP_Naval")
 )
 
-/** 进服方式：direct=模拟客户端直连（推荐）；cardtool=原观战占位。 */
-enum class JoinStyle { DIRECT, CARDTOOL }
+/** 进服方式：cardtool=原版观战占位（默认，与 CardTool 3.16 一致）；direct=模拟客户端直连。 */
+enum class JoinStyle { CARDTOOL, DIRECT }
 
 /**
  * 卡服配置（对应 CardTool config.ini）。
@@ -58,7 +58,7 @@ data class CardToolConfig(
     val mode: Int,
     val player: Int = 0x40,
     val minMap: Int = 1,
-    val joinStyle: JoinStyle = JoinStyle.DIRECT,
+    val joinStyle: JoinStyle = JoinStyle.CARDTOOL,
     val joinTimeoutMs: Long = 12_000,
     val joinPollIntervalMs: Long = 500,
     val primeGids: List<String> = emptyList(),

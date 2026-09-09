@@ -134,6 +134,20 @@ class CardToolService(
         var sessionId = initialSessionId
         var protocolVersionCache = ""
         var socketDead = false
+        // updateServer 在服务端常因 banner 鉴权失败（ERR_AUTHORIZATION_REQUIRED），原版一律忽略；
+        // 相同错误只提示一次，避免刷屏。
+        var lastUpdateServerWarn: String? = null
+
+        /** 发 updateServer，失败只记日志（对齐原版 `.catch(()=>{})`）。 */
+        suspend fun updateQuiet(payload: Map<String, Any?>, tag: String) {
+            runCatching { api.updateServer(sessionId, payload) }.onFailure { e ->
+                val detail = describe(e)
+                if (detail != lastUpdateServerWarn) {
+                    lastUpdateServerWarn = detail
+                    onEvent(Event.Log("[$tag] RSP.updateServer 失败(原版同样忽略): $detail", isError = true))
+                }
+            }
+        }
 
         // 1. 服务器详情 + 管理员校验
         val rsp = api.getFullServerDetails(sessionId, config.gameId)
@@ -159,39 +173,65 @@ class CardToolService(
             runPrimePhase(config, gameId, login, client, sessionId, onEvent)
         }
 
-        // 3. 主循环：占位进服 → 刷新模式 → 检查条件 → 锚定或重试
+        // 3. 原版：进循环前先打一次基础轮换（失败忽略）
+        onEvent(Event.Log("发送初始 RSP.updateServer（原版在循环前调用一次）"))
+        updateQuiet(payloadBase, "初始")
+
+        // 4. 主循环（严格对齐 CardTool.js：reserveSlot → joinGame → updateServer → sleep 2s → getServerDetails）
         onEvent(Event.Phase("开始卡服"))
+        var loopCount = 0
         while (true) {
             currentCoroutineContext().ensureActive()
+            loopCount++
             try {
                 if (socketDead) {
-                    onEvent(Event.Log("Blaze 连接已断开，重建连接"))
+                    onEvent(Event.Log("[#$loopCount] Blaze 连接已断开，重建连接"))
                     val re = reconnect(onEvent)
                     socket.close()
                     socket = re.socket
                     client = re.client
                     login = re.login
                     socketDead = false
+                    onEvent(Event.Log("[#$loopCount] 重连成功: ${re.login.displayName} (personaId=${re.login.personaId})"))
                 }
 
-                if (config.joinStyle == JoinStyle.CARDTOOL) {
-                    runCatching { api.reserveSlot(sessionId, config.gameId) }
-                        .onSuccess { if (it != "Joined") onEvent(Event.Log("reserveSlot 未返回 Joined: $it")) }
-                }
+                // 原版无条件先 reserveSlot(spectator)
+                onEvent(Event.Log("[#$loopCount] Game.reserveSlot(spectator)"))
+                runCatching { api.reserveSlot(sessionId, config.gameId) }
+                    .onSuccess {
+                        if (it != "Joined") onEvent(Event.Log("[#$loopCount] reserveSlot 未返回 Joined: $it", isError = true))
+                    }
+                    .onFailure {
+                        onEvent(Event.Log("[#$loopCount] reserveSlot 失败: ${describe(it)}", isError = true))
+                    }
 
-                val joinResult = client.joinGame(
-                    gameId = gameId,
-                    personaId = login.personaId,
-                    platformId = login.nucleusId,
-                    connectionGroupId = login.connectionGroupId,
-                    userExtendedData = login.userExtendedData,
-                    protocolVersionCache = protocolVersionCache,
-                    joinConfirmTimeoutMs = config.joinTimeoutMs,
-                    joinPollIntervalMs = config.joinPollIntervalMs
-                )
+                // 进服：cardtool 用原版观战占位包（不等待 PROS 确认）；direct 保留旧直连路径
+                val joinResult = if (config.joinStyle == JoinStyle.CARDTOOL) {
+                    onEvent(Event.Log("[#$loopCount] GameManager.joinGame（原版观战占位包，不等待 PROS）"))
+                    client.joinGameCardtool(
+                        gameId = gameId,
+                        personaId = login.personaId,
+                        platformId = login.nucleusId,
+                        displayName = login.displayName,
+                        userExtendedData = login.userExtendedData,
+                        connectionGroupId = login.connectionGroupId
+                    )
+                } else {
+                    onEvent(Event.Log("[#$loopCount] GameManager.joinGame（direct 直连，等待 PROS 确认）"))
+                    client.joinGame(
+                        gameId = gameId,
+                        personaId = login.personaId,
+                        platformId = login.nucleusId,
+                        connectionGroupId = login.connectionGroupId,
+                        userExtendedData = login.userExtendedData,
+                        protocolVersionCache = protocolVersionCache,
+                        joinConfirmTimeoutMs = config.joinTimeoutMs,
+                        joinPollIntervalMs = config.joinPollIntervalMs
+                    )
+                }
                 joinResult.protocolVersion?.let { protocolVersionCache = it }
                 if (!joinResult.ok) {
-                    onEvent(Event.Log("进服失败: ${joinResult.reason}", isError = true))
+                    onEvent(Event.Log("[#$loopCount] 进服失败: ${joinResult.reason}", isError = true))
                     if (joinResult.socketDead) {
                         socketDead = true
                         continue
@@ -200,9 +240,9 @@ class CardToolService(
                     delay(1000)
                     continue
                 }
-                onEvent(Event.Log("进服成功"))
+                onEvent(Event.Log("[#$loopCount] 进服成功"))
 
-                runCatching { api.updateServer(sessionId, payloadBase) }
+                updateQuiet(payloadBase, "循环#$loopCount")
                 delay(2000)
 
                 val current = api.getServerDetails(sessionId, config.gameId)
@@ -210,14 +250,15 @@ class CardToolService(
                 val modesText = current.rotation.map { it.modePrettyName }.distinct().joinToString(" ")
                 onEvent(
                     Event.Log(
-                        "状态: ${current.slots.occupied}/${current.slots.soldierMax} $firstMap " +
-                            "(${current.rotation.size}图) $modesText"
+                        "[#$loopCount] 状态: ${current.slots.occupied}/${current.slots.soldierMax} $firstMap " +
+                            "(${current.rotation.size}图) $modesText | mapMode=${current.mapMode} guid=${current.guid}"
                     )
                 )
 
                 if (current.mapMode == modeName && current.rotation.size >= config.minMap) {
-                    onEvent(Event.Log("地图符合条件，正在锚定"))
+                    onEvent(Event.Log("[#$loopCount] 地图符合条件，正在锚定"))
                     val pinned = buildPinnedRotation(current.rotation, config.mode)
+                    onEvent(Event.Log("[#$loopCount] 锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}"))
                     val anchorPayload = buildServerUpdatePayload(
                         serverId = rsp.serverId,
                         name = rsp.serverSettings.name,
@@ -229,37 +270,47 @@ class CardToolService(
                         mapsOverride = pinned
                     )
                     try {
+                        onEvent(Event.Log("[#$loopCount] RSP.chooseLevel #1 persistedGameId=${current.guid} levelIndex=0"))
                         api.chooseLevel(sessionId, current.guid, 0)
-                        api.updateServer(sessionId, anchorPayload)
+                        // 与 CardTool 一致：锚定中的 updateServer 单独吞错（原版此处 .catch(()=>{})），
+                        // 成败只由两次 chooseLevel 决定。
+                        updateQuiet(anchorPayload, "锚定")
                         delay(1000)
+                        onEvent(Event.Log("[#$loopCount] RSP.chooseLevel #2 persistedGameId=${current.guid} levelIndex=0"))
                         api.chooseLevel(sessionId, current.guid, 0)
                     } catch (e: Exception) {
-                        onEvent(Event.Log("锚定失败，请手动锚定: ${e.message}", isError = true))
+                        onEvent(Event.Log("[#$loopCount] 锚定失败，请手动锚定: ${describe(e)}", isError = true))
                     }
                     onEvent(Event.Log("已完成，请尽快进入服务器"))
                     onEvent(Event.Finished(true, "卡服完成，请尽快进入服务器"))
                     return
                 }
 
-                // 条件不满足 → 离开重试
+                // 条件不满足 → 离开重试（对齐原版顺序）
+                onEvent(
+                    Event.Log(
+                        "[#$loopCount] 条件不满足(mapMode=${current.mapMode} 需要 $modeName，" +
+                            "${current.rotation.size}/$config.minMap 图)，离开重试"
+                    )
+                )
                 runCatching { api.leaveGame(sessionId, config.gameId) }
                 delay(1000)
-                runCatching { api.updateServer(sessionId, payloadBase) }
-                runCatching { api.updateServer(sessionId, payloadBase) }
+                updateQuiet(payloadBase, "重试#$loopCount")
+                updateQuiet(payloadBase, "重试#$loopCount")
                 delay(3000)
                 if (current.slots.occupied > 1) {
-                    onEvent(Event.Log("服务器有其他玩家进入，等待中"))
+                    onEvent(Event.Log("[#$loopCount] 服务器有其他玩家进入，等待中"))
                     delay(10_000)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onEvent(Event.Log("循环出错: ${e.message}", isError = true))
+                onEvent(Event.Log("[#$loopCount] 循环出错: ${describe(e)}", isError = true))
                 if (e is BlazeConnectionClosedException) {
                     socketDead = true
                 } else if (e is GatewayError && (e.code == -32501 || e.code == -32504)) {
                     // 缓存的 session 已被网关废弃：强制失效后重换（走 CredentialManager 统一路径）
-                    onEvent(Event.Log("Gateway Session 失效，强制重换..."))
+                    onEvent(Event.Log("[#$loopCount] Gateway Session 失效，强制重换..."))
                     credentialManager.invalidateActiveSession()
                     sessionId = credentialManager.getActiveSessionId()
                 }
@@ -290,16 +341,27 @@ class CardToolService(
                 currentCoroutineContext().ensureActive()
                 val g = gid.toLongOrNull() ?: continue
                 onEvent(Event.Log("预热 第$round/${config.primeRounds}轮 进入暖服 $gid"))
-                val r = client.joinGame(
-                    gameId = g,
-                    personaId = login.personaId,
-                    platformId = login.nucleusId,
-                    connectionGroupId = login.connectionGroupId,
-                    userExtendedData = login.userExtendedData,
-                    protocolVersionCache = "",
-                    joinConfirmTimeoutMs = 12_000,
-                    joinPollIntervalMs = 500
-                )
+                val r = if (config.joinStyle == JoinStyle.CARDTOOL) {
+                    client.joinGameCardtool(
+                        gameId = g,
+                        personaId = login.personaId,
+                        platformId = login.nucleusId,
+                        displayName = login.displayName,
+                        userExtendedData = login.userExtendedData,
+                        connectionGroupId = login.connectionGroupId
+                    )
+                } else {
+                    client.joinGame(
+                        gameId = g,
+                        personaId = login.personaId,
+                        platformId = login.nucleusId,
+                        connectionGroupId = login.connectionGroupId,
+                        userExtendedData = login.userExtendedData,
+                        protocolVersionCache = "",
+                        joinConfirmTimeoutMs = 12_000,
+                        joinPollIntervalMs = 500
+                    )
+                }
                 if (!r.ok) {
                     onEvent(Event.Log("预热 进服失败($gid): ${r.reason}", isError = true))
                     continue
@@ -331,5 +393,11 @@ class CardToolService(
 
     private fun requireGameId(config: CardToolConfig): Long =
         config.gameId.toLongOrNull() ?: throw IllegalArgumentException("gameId 无效：${config.gameId}")
+
+    /** 错误详情：GatewayError 展开原始 code/message/method，便于定位服务端拒绝原因。 */
+    private fun describe(e: Throwable): String = when (e) {
+        is GatewayError -> "code=${e.code} method=${e.method} raw=${e.rawMessage} (${e.message})"
+        else -> e.message ?: e.javaClass.simpleName
+    }
 
 }

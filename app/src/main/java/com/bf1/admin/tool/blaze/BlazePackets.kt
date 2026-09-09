@@ -105,4 +105,62 @@ object BlazePackets {
             "USER 3" to emptyUser
         )
     }
+
+    /**
+     * 原版 CardTool 3.16 的 joinGame 包（观战占位风格），对应 CardTool.js 主循环里的
+     * GameManager.joinGame：CMGD 带 OSID/SCIO、GVER 固定 3779779，PLJD.GENT=2，
+     * PLYA 带 premium/rank，PLDL 只有 IREP/PLYA/RLNM/USID（无 ENCR/SLOT），
+     * USID 用 displayName + cem_ea_id、AID=EXID=platformId、ALOC=0x7a684152。
+     */
+    fun joinGameCardtool(
+        gameId: Long,
+        personaId: Long,
+        platformId: Long,
+        displayName: String,
+        connectionGroup: List<Long>
+    ): Map<String, Any?> {
+        val emptyUser = mapOf(
+            "AID  0" to 0L, "ALOC 0" to 0L, "EXBB 2" to "", "EXID 0" to 0L,
+            "ID   0" to 0L, "NAME 1" to "", "NASP 1" to "", "ORIG 0" to 0L, "PIDI 0" to 0L
+        )
+        return mapOf(
+            "CMGD 3" to mapOf(
+                "GGTY 0" to 0L,
+                "GVER 1" to "3779779",
+                "OSID 0" to 0L,
+                "PNET 62" to mapOf("VALU 3" to NETWORK_INFO),
+                "SCIO 3" to mapOf("SCEN 1" to "", "SCEV 0" to 0L, "SCVA 0" to 0L, "SUBN 1" to "")
+            ),
+            "GID  0" to gameId,
+            "JMET 0" to 1L,
+            "PLJD 3" to mapOf(
+                "BTPL 9" to connectionGroup,
+                "DFRL 1" to "",
+                "GENT 0" to 2L,
+                "PLDL 43" to listOf(
+                    mapOf(
+                        "IREP 0" to 0L,
+                        "PLYA 511" to mapOf("latency" to "-1", "premium" to "true", "rank" to "23"),
+                        "RLNM 1" to "soldier",
+                        "USID 3" to mapOf(
+                            "AID  0" to platformId,
+                            "ALOC 0" to 2053652818L,
+                            "EXBB 2" to "",
+                            "EXID 0" to platformId,
+                            "ID   0" to personaId,
+                            "NAME 1" to displayName,
+                            "NASP 1" to "cem_ea_id",
+                            "ORIG 0" to 0L,
+                            "PIDI 0" to 0L
+                        )
+                    )
+                ),
+                "SLOT 0" to 0L,
+                "TID  0" to 65534L,
+                "TIDX 0" to 65535L
+            ),
+            "SLID 0" to 255L,
+            "USER 3" to emptyUser
+        )
+    }
 }

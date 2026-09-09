@@ -247,9 +247,43 @@ class BlazeClient(
         )
     }
 
+    /**
+     * 原版 CardTool 3.16 的进服：只发一次 GameManager.joinGame（观战占位包），
+     * **不** 上报客户端状态、**不** 调 getFullGameData、**不** 等待 PROS 确认。
+     * joinGame 无 error 即视为成功；观战占位不会出现在 PROS 里，由主循环用网关槽位复核。
+     */
+    suspend fun joinGameCardtool(
+        gameId: Long,
+        personaId: Long,
+        platformId: Long,
+        displayName: String,
+        userExtendedData: List<Long>?,
+        connectionGroupId: Long
+    ): JoinResult {
+        val connectionGroup = if (userExtendedData != null && userExtendedData.size >= 3) {
+            userExtendedData.take(3)
+        } else {
+            listOf(30722L, 2L, connectionGroupId)
+        }
+        debug("joinGameCardtool: gameId=$gameId personaId=$personaId platformId=$platformId connectionGroup=$connectionGroup")
+        val resp = try {
+            send(
+                "GameManager.joinGame",
+                BlazePackets.joinGameCardtool(gameId, personaId, platformId, displayName, connectionGroup),
+                timeoutMs = 12_000
+            )
+        } catch (e: BlazeConnectionClosedException) {
+            return JoinResult(false, "连接已断开", null, false, true)
+        }
+        if (resp.error != null) {
+            val dead = resp.error.name.contains("AUTHENTICATION_REQUIRED")
+            return JoinResult(false, "joinGame 返回错误: ${resp.error.message}", null, false, dead)
+        }
+        return JoinResult(true, null, null, false, false)
+    }
+
     /** 轮询 getFullGameData 直到 personaId 出现在玩家列表或超时。 */
-    suspend fun waitUntilSeen(gameId: Long, personaId: Long, timeoutMs: Long, pollMs: Long): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
+    suspend fun waitUntilSeen(gameId: Long, personaId: Long, timeoutMs: Long, pollMs: Long): Boolean {        val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val state = runCatching { getFullGameData(gameId) }.getOrNull()
             if (state != null && BlazeParsing.playerInPros(state.players, personaId)) return true

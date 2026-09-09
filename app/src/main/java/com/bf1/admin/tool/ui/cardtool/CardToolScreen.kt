@@ -59,7 +59,7 @@ fun CardToolScreen(
     var selectedMode by rememberSaveable { mutableIntStateOf(0x2) }
     var player by rememberSaveable { mutableIntStateOf(0x40) }
     var minMap by rememberSaveable { mutableStateOf("24") }
-    var joinStyle by rememberSaveable { mutableStateOf(JoinStyle.DIRECT) }
+    var joinStyle by rememberSaveable { mutableStateOf(JoinStyle.CARDTOOL) }
     var primeGids by rememberSaveable { mutableStateOf("") }
     var primeRounds by rememberSaveable { mutableStateOf("2") }
     var primeStay by rememberSaveable { mutableStateOf("5") }
