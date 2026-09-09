@@ -223,17 +223,18 @@ class CardToolService(
         var protocolVersionCache = ""
         var rolesCache: List<String> = emptyList()
         var socketDead = false
-        // updateServer 在服务端常因 banner 鉴权失败（ERR_AUTHORIZATION_REQUIRED），原版一律忽略；
-        // 相同错误只提示一次，避免刷屏。
+        // updateServer 的 bannerSettings 已废弃：服务端仍会走 updateServerBanner 并因鉴权返回
+        // ERR_AUTHORIZATION_REQUIRED，该报错无影响、不再提示。其他失败（如 session 失效）提示一次。
         var lastUpdateServerWarn: String? = null
 
-        /** 发 updateServer，失败只记日志（对齐原版 `.catch(()=>{})`）。 */
+        /** 发 updateServer：banner 废弃字段的报错忽略，其他失败只记一次日志（对齐原版 `.catch(()=>{})`）。 */
         suspend fun updateQuiet(payload: Map<String, Any?>, tag: String) {
             runCatching { api.updateServer(sessionId, payload) }.onFailure { e ->
+                if (isBannerNoise(e)) return@onFailure
                 val detail = describe(e)
                 if (detail != lastUpdateServerWarn) {
                     lastUpdateServerWarn = detail
-                    onEvent(Event.Log("[$tag] RSP.updateServer 失败(原版同样忽略): $detail", isError = true))
+                    onEvent(Event.Log("[$tag] RSP.updateServer 失败: $detail", isError = true))
                 }
             }
         }
@@ -470,8 +471,8 @@ class CardToolService(
 
     /**
      * 执行一次锚定：chooseLevel → updateServer（吞错）→ 等 1 秒 → chooseLevel。
-     * 成败只由两次 chooseLevel 决定；updateServer 的服务端错误（如 banner 鉴权
-     * ERR_AUTHORIZATION_REQUIRED）一律忽略，与原版 CardTool 一致。
+     * 成败只由两次 chooseLevel 决定；updateServer 里 banner 是废弃字段，服务端固定回
+     * ERR_AUTHORIZATION_REQUIRED，属噪音不再提示，与原版 CardTool 的 `.catch(()=>{})` 一致。
      * @return 成功返回 null，失败返回错误描述
      */
     private suspend fun performAnchor(
@@ -485,7 +486,9 @@ class CardToolService(
         api.chooseLevel(sessionId, persistedGameId, 0)
         runCatching { api.updateServer(sessionId, anchorPayload) }
             .onFailure {
-                onEvent(Event.Log("[$tag] RSP.updateServer 失败(已忽略): ${describe(it)}", isError = true))
+                if (!isBannerNoise(it)) {
+                    onEvent(Event.Log("[$tag] RSP.updateServer 失败: ${describe(it)}", isError = true))
+                }
             }
         delay(1000)
         onEvent(Event.Log("[$tag] RSP.chooseLevel #2 persistedGameId=$persistedGameId levelIndex=0"))
@@ -493,6 +496,20 @@ class CardToolService(
         null
     } catch (e: Exception) {
         describe(e)
+    }
+
+    /**
+     * updateServer 的 bannerSettings 是废弃字段（内容随意），服务端仍会调用 updateServerBanner
+     * 并因鉴权返回 ERR_AUTHORIZATION_REQUIRED（component 2049 / errc 0x40080000）。
+     * 该报错无实际影响，直接当噪音过滤掉。
+     */
+    private fun isBannerNoise(e: Throwable): Boolean {
+        val text = when (e) {
+            is GatewayError -> "${e.rawMessage} ${e.message.orEmpty()}"
+            else -> e.message.orEmpty()
+        }
+        return text.contains("updateServerBanner", ignoreCase = true) ||
+            text.contains("ERR_AUTHORIZATION_REQUIRED", ignoreCase = true)
     }
 
     /** 错误详情：GatewayError 展开原始 code/message/method，便于定位服务端拒绝原因。 */
