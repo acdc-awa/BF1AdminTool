@@ -86,16 +86,19 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
     }
 
     /** 只读诊断：登录 + 查询，不改服务器。 */
-    fun startDiagnostic(config: CardToolConfig) = start(config, diagnostic = true)
+    fun startDiagnostic(config: CardToolConfig) = start("诊断中") { service.runDiagnostic(config, it) }
 
     /** 完整卡服流程（写操作）。 */
-    fun startCard(config: CardToolConfig) = start(config, diagnostic = false)
+    fun startCard(config: CardToolConfig) = start("准备中") { service.run(config, it) }
 
-    private fun start(config: CardToolConfig, diagnostic: Boolean) {
+    /** 手动锚定：只对当前轮换锚定一次（自动锚定失败后的补救），不跑卡服循环。 */
+    fun startManualAnchor(config: CardToolConfig) = start("手动锚定") { service.anchorNow(config, it) }
+
+    private fun start(phase: String, action: suspend ((CardToolService.Event) -> Unit) -> Unit) {
         if (_isRunning.value) return
         _logs.value = emptyList()
         _lastResult.value = null
-        _phase.value = if (diagnostic) "诊断中" else "准备中"
+        _phase.value = phase
         _isRunning.value = true
         runJob = viewModelScope.launch(Dispatchers.IO) {
             val onEvent: (CardToolService.Event) -> Unit = { event ->
@@ -116,11 +119,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
             }
-            if (diagnostic) {
-                service.runDiagnostic(config, onEvent)
-            } else {
-                service.run(config, onEvent)
-            }
+            action(onEvent)
         }
     }
 

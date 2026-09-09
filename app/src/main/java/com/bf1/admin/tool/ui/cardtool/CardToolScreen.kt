@@ -80,6 +80,17 @@ fun CardToolScreen(
     val gameId = activeServer?.gameId
     val gameIdValid = gameId?.length == 14
 
+    fun currentConfig() = buildConfig(
+        gameId = gameId.orEmpty(),
+        mode = selectedMode,
+        player = player,
+        minMap = minMap,
+        joinStyle = joinStyle,
+        primeGids = primeGids,
+        primeRounds = primeRounds,
+        primeStay = primeStay
+    )
+
     // 整页滚动，新日志到达时滚到底部；用户手动上滑翻阅（距底部 > 120dp）时暂停跟随
     val scrollState = rememberScrollState()
     val followThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
@@ -159,9 +170,7 @@ fun CardToolScreen(
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
-                    onClick = {
-                        viewModel.startDiagnostic(buildConfig(gameId.orEmpty(), selectedMode, player, minMap, joinStyle, primeGids, primeRounds, primeStay))
-                    },
+                    onClick = { viewModel.startDiagnostic(currentConfig()) },
                     enabled = gameIdValid,
                     modifier = Modifier.weight(1f)
                 ) {
@@ -178,6 +187,14 @@ fun CardToolScreen(
                 ) {
                     Text("开始卡行动")
                 }
+            }
+            // 自动锚定失败后的补救：只对当前轮换锚定一次，不跑卡服循环
+            OutlinedButton(
+                onClick = { viewModel.startManualAnchor(currentConfig()) },
+                enabled = gameIdValid,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("手动锚定当前轮换")
             }
         }
 
@@ -202,7 +219,7 @@ fun CardToolScreen(
                 Button(
                     onClick = {
                         showConfirm = false
-                        viewModel.startCard(buildConfig(gameId.orEmpty(), selectedMode, player, minMap, joinStyle, primeGids, primeRounds, primeStay))
+                        viewModel.startCard(currentConfig())
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
