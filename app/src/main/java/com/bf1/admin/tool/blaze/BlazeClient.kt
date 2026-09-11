@@ -104,7 +104,7 @@ data class JoinResult(
 
 /**
  * Blaze 高层客户端：封装登录/查身份/进服/查询等操作，对应 CardTool.js 的
- * blazeLogin / lookupUsers / joinServer / fetchFullGameData / waitUntilSeen。
+ * blazeLogin / lookupUsers / joinServer / fetchFullGameData。
  *
  * 所有发送均带超时；socket 断开时抛 [BlazeConnectionClosedException]，由上层重建。
  */
@@ -272,14 +272,16 @@ class BlazeClient(
                 .onSuccess { if (it) debug("已收到 UserSessionExtendedDataUpdate 绑定通知") }
         }
 
-        // 确认进服：轮询 PROS，PID 出现即视为进入；满员时 getFullGameData 查不到，按已进入处理
+        // 确认进服：只认 PROS 里出现自己的 PID（对齐 Python wait_until_seen）。
+        // 不再把 errc == PARTICIPANT_SLOTS_FULL_ERRC 当「已进入」：该 errc 按协议表是
+        // Core.ERR_AUTHENTICATION_REQUIRED，认证失败时会被误判成进服成功。
         val deadline = System.currentTimeMillis() + joinConfirmTimeoutMs
+        var lastErrorName: String? = null
+        var lastErrc: Long? = null
         while (System.currentTimeMillis() < deadline) {
             val state = runCatching { getFullGameData(gameId) }.getOrNull()
-            if (state?.errc == PARTICIPANT_SLOTS_FULL_ERRC) {
-                debug("确认阶段服务器满员(errc=$PARTICIPANT_SLOTS_FULL_ERRC)，按已进入处理")
-                return JoinResult(true, null, protocolVersion, true, false, roles)
-            }
+            lastErrorName = state?.errorName
+            lastErrc = state?.errc
             val player = state?.players?.let { playerRecord(it, personaId) }
             if (player != null) {
                 val likeClient = BlazeParsing.joinedLikeClient(player)
@@ -288,9 +290,10 @@ class BlazeClient(
             }
             kotlinx.coroutines.delay(joinPollIntervalMs)
         }
+        val tail = lastErrorName?.let { " (最近一次 getFullGameData: $it errc=$lastErrc)" }.orEmpty()
         return JoinResult(
             ok = false,
-            reason = "进服确认超时，未在玩家列表中找到 personaId=$personaId",
+            reason = "进服确认超时，未在玩家列表中找到 personaId=$personaId$tail",
             protocolVersion = protocolVersion,
             prosSeen = false,
             socketDead = false,
@@ -360,17 +363,6 @@ class BlazeClient(
             if (cong != null && cong != 0L) groups.add(cong)
         }
         return groups.toList()
-    }
-
-    /** 轮询 getFullGameData 直到 personaId 出现在玩家列表或超时。 */
-    suspend fun waitUntilSeen(gameId: Long, personaId: Long, timeoutMs: Long, pollMs: Long): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            val state = runCatching { getFullGameData(gameId) }.getOrNull()
-            if (state != null && BlazeParsing.playerInPros(state.players, personaId)) return true
-            kotlinx.coroutines.delay(pollMs)
-        }
-        return false
     }
 
     // ── 底层发送 ──
