@@ -38,6 +38,11 @@ import com.bf1.admin.tool.cardtool.MODE_PRETTY_NAMES
 import com.bf1.admin.tool.cardtool.MODES
 import com.bf1.admin.tool.ui.common.ServerSelector
 
+private enum class ConfirmTaskType {
+    START_CARD,
+    MANUAL_ANCHOR
+}
+
 /**
  * 卡行动页 (Material 3 顶级质感控制台)：
  * 服务器选择 + 状态指示卡 + 可折叠配置卡 + 控制动作组 + 高级终端日志区。
@@ -65,7 +70,7 @@ fun CardToolScreen(
     var primeRounds by rememberSaveable { mutableStateOf("2") }
     var primeStay by rememberSaveable { mutableStateOf("5") }
     var debugLogs by rememberSaveable { mutableStateOf(false) }
-    var showConfirm by remember { mutableStateOf(false) }
+    var pendingConfirmTask by remember { mutableStateOf<ConfirmTaskType?>(null) }
     var configExpanded by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
 
@@ -207,7 +212,7 @@ fun CardToolScreen(
                     Text(stringResource(R.string.btn_verify_account), fontWeight = FontWeight.SemiBold)
                 }
                 Button(
-                    onClick = { showConfirm = true },
+                    onClick = { pendingConfirmTask = ConfirmTaskType.START_CARD },
                     enabled = gameIdValid,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f),
@@ -224,7 +229,7 @@ fun CardToolScreen(
 
             // 自动锚定失败后的补救
             FilledTonalButton(
-                onClick = { viewModel.startManualAnchor(currentConfig()) },
+                onClick = { pendingConfirmTask = ConfirmTaskType.MANUAL_ANCHOR },
                 enabled = gameIdValid,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -246,19 +251,30 @@ fun CardToolScreen(
         )
     }
 
-    // 开始卡行动确认
-    if (showConfirm) {
+    // 开始卡行动 / 手动锚定确认
+    pendingConfirmTask?.let { task ->
         AlertDialog(
-            onDismissRequest = { showConfirm = false },
+            onDismissRequest = { pendingConfirmTask = null },
             icon = {
                 Icon(
-                    imageVector = Icons.Default.RocketLaunch,
+                    imageVector = if (task == ConfirmTaskType.START_CARD) Icons.Default.RocketLaunch else Icons.Default.Login,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp)
                 )
             },
-            title = { Text(stringResource(R.string.title_dialog_start_card), style = MaterialTheme.typography.headlineSmall) },
+            title = {
+                Text(
+                    text = stringResource(
+                        if (task == ConfirmTaskType.START_CARD) {
+                            R.string.title_dialog_start_card
+                        } else {
+                            R.string.title_dialog_manual_anchor
+                        }
+                    ),
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            },
             text = {
                 Text(
                     stringResource(R.string.msg_confirm_start_card),
@@ -270,13 +286,18 @@ fun CardToolScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        showConfirm = false
-                        viewModel.startCard(currentConfig())
+                        val config = currentConfig()
+                        pendingConfirmTask = null
+                        if (task == ConfirmTaskType.START_CARD) {
+                            viewModel.startCard(config)
+                        } else {
+                            viewModel.startManualAnchor(config)
+                        }
                     }
                 ) { Text(stringResource(R.string.btn_confirm_start)) }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirm = false }) { Text(stringResource(R.string.btn_cancel)) }
+                TextButton(onClick = { pendingConfirmTask = null }) { Text(stringResource(R.string.btn_cancel)) }
             }
         )
     }

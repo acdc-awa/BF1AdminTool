@@ -162,7 +162,10 @@ fun ServerSelector(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
-                    onClick = { expanded = false }
+                    onClick = { expanded = false },
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 )
             } else if (servers.isEmpty()) {
                 DropdownMenuItem(
@@ -173,7 +176,10 @@ fun ServerSelector(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
-                    onClick = { expanded = false }
+                    onClick = { expanded = false },
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 )
             } else {
                 servers.forEach { server ->
@@ -214,13 +220,18 @@ fun ServerSelector(
                             onServerSelected(server)
                             expanded = false
                         },
-                        modifier = if (isSelected) {
-                            Modifier.background(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .then(
+                                if (isSelected) {
+                                    Modifier.background(
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    )
+                                } else {
+                                    Modifier
+                                }
                             )
-                        } else {
-                            Modifier
-                        }
                     )
                 }
             }

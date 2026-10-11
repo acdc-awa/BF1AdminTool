@@ -88,12 +88,13 @@
     <string name="msg_card_idle_hint">配置完毕后点击下方按钮启动</string>
     <string name="title_card_missing_gameid">该服务器未保存 GameID</string>
     <string name="msg_card_missing_gameid">旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。</string>
-    <string name="btn_stop_card">停止卡行动</string>
+    <string name="btn_stop_card">停止</string>
     <string name="btn_verify_account">验证账号</string>
     <string name="btn_start_card">开始卡行动</string>
     <string name="btn_manual_anchor">手动锚定（需要有玩家在服务器里面）</string>
     <string name="title_dialog_start_card">启动卡行动</string>
-    <string name="msg_confirm_start_card">即将对当前服务器开启长时连接保活与占位任务，确认立即启动？</string>
+    <string name="title_dialog_manual_anchor">启动手动锚定</string>
+    <string name="msg_confirm_start_card">即将开始卡行动/锚定任务，是否启动？</string>
     <string name="btn_confirm_start">确认启动</string>
     <string name="title_card_config">卡行动参数配置</string>
     <string name="default_mode_name">标准模式</string>
