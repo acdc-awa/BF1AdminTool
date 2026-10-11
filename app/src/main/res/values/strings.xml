@@ -15,7 +15,7 @@
     <string name="btn_relogin">重新登录</string>
     <string name="btn_later">稍后</string>
     <string name="btn_add">添加</string>
-    <string name="btn_save_and_verify">保存并验证</string>
+    <string name="btn_copy_all_cookies">复制完整Cookie</string>
     <string name="btn_update_now">立即更新</string>
     <string name="btn_go_download">前往下载</string>
     <string name="btn_recheck">重新检查</string>
@@ -143,8 +143,12 @@
     <string name="title_quick_operation_guide">快捷操作说明</string>
     <string name="content_quick_operation_guide">• 确保已在设置中选择 EA 账号并选定当前目标服务器。\n• 管理员列表输入框支持玩家名过滤或直接长按/点击删除。\n• 以 # 号开头输入可直接按 personaId (PID) 添加/移除管理员。</string>
     <string name="title_cookie_credentials_detail">Cookie 凭证详情</string>
+    <string name="hint_cookie_read_only">Cookie 由网页登录时自动获取并安全保存，仅支持查看与复制。</string>
     <string name="label_remid_credential">remid 凭证</string>
     <string name="label_sid_credential">sid 凭证</string>
+    <string name="toast_copied_remid">已复制 remid</string>
+    <string name="toast_copied_sid">已复制 sid</string>
+    <string name="toast_copied_all_cookies">已复制完整 Cookie</string>
     <string name="title_dialog_add_server">添加服务器</string>
     <string name="msg_enter_gameid_hint">请输入 GameID：</string>
     <string name="label_gameid_input">GameID</string>

@@ -550,7 +550,6 @@ fun HomeScreen(
                 onShowServerDeleteDialog = { showServerDeleteDialog = it },
                 onPendingDeleteServer = { pendingDeleteServer = it },
                 onNavigateToLogin = onNavigateToLogin,
-                onSaveCredentials = { remid, sid -> viewModel.saveCredentials(remid, sid) },
                 onLookupServer = { viewModel.lookupServer(it) },
                 onAddServer = { serverId, onSuccess ->
                     viewModel.addServerFromSettings(serverId, onSuccess)

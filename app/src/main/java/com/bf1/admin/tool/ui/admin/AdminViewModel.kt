@@ -67,7 +67,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRefreshingAdminList = MutableStateFlow(false)
     val isRefreshingAdminList: StateFlow<Boolean> = _isRefreshingAdminList.asStateFlow()
 
-    // ── 凭证编辑 ──
+    // ── 凭证查看 ──
     data class DecryptedCredentials(val remid: String, val sid: String)
 
     private val _decryptedCredentials = MutableStateFlow<DecryptedCredentials?>(null)
@@ -291,10 +291,14 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── 凭证编辑 ──
+    // ── 凭证查看 ──
     private fun loadDecryptedCredentials() {
         viewModelScope.launch {
-            val account = _activeAccount.value ?: return@launch
+            val account = _activeAccount.value
+            if (account == null) {
+                _decryptedCredentials.value = null
+                return@launch
+            }
             try {
                 val enc = accountRepo.getDecryptedById(account.id)
                 _decryptedCredentials.value = enc?.let {
@@ -302,30 +306,6 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 _message.emit("加载凭证失败: ${e.message}")
-            }
-        }
-    }
-
-    fun saveCredentials(remid: String, sid: String) {
-        if (_isLoading.value) return
-        viewModelScope.launch {
-            // 复用 isLoading：弹窗"保存并验证"按钮的转圈/禁用由它驱动
-            _isLoading.value = true
-            try {
-                val account = _activeAccount.value ?: throw Exception("无活跃账号")
-                // 先验证后保存：兑换 + 轮换落库 + 记 session 在 CredentialManager
-                // 锁内原子完成，验证失败不覆盖现有有效凭证。
-                withContext(Dispatchers.IO) {
-                    // Juno token 认证：需要先凭 cookie 拿到 access_token 再验证
-                    // saveCredentials 暂时降级为仅验证 cookie 有效性
-                    credentialManager.getActiveSessionId()
-                }
-                loadDecryptedCredentials()
-                _message.emit("保存成功，验证通过")
-            } catch (e: Exception) {
-                _message.emit("验证失败，凭证未修改: ${e.message}")
-            } finally {
-                _isLoading.value = false
             }
         }
     }

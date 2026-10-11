@@ -33,7 +33,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Tab 2: 设置 (Material 3 规范顶级质感)。
- * 聚合：关于、更新、账号管理、Cookie 编辑、服务器管理、使用说明。
+ * 聚合：关于、更新、账号管理、Cookie 查看、服务器管理、使用说明。
  */
 @Composable
 fun SettingsTab(
@@ -50,21 +50,12 @@ fun SettingsTab(
     onShowServerDeleteDialog: (Boolean) -> Unit,
     onPendingDeleteServer: (ServerEntity?) -> Unit,
     onNavigateToLogin: () -> Unit,
-    onSaveCredentials: (String, String) -> Unit,
     onLookupServer: (String) -> Unit,
     onAddServer: (String, () -> Unit) -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
-    // 凭证编辑状态
-    var remid by remember(decryptedCredentials) {
-        mutableStateOf(decryptedCredentials?.remid ?: "")
-    }
-    var sid by remember(decryptedCredentials) {
-        mutableStateOf(decryptedCredentials?.sid ?: "")
-    }
 
     // 更新检查状态
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -86,12 +77,8 @@ fun SettingsTab(
     // ── 账号详情弹窗 ──
     if (showAccountDetailDialog && activeAccount != null) {
         AccountDetailDialog(
-            remid = remid,
-            sid = sid,
-            isLoading = isLoading,
-            onRemidChange = { remid = it },
-            onSidChange = { sid = it },
-            onSave = { onSaveCredentials(remid, sid) },
+            remid = decryptedCredentials?.remid.orEmpty(),
+            sid = decryptedCredentials?.sid.orEmpty(),
             onDismiss = { showAccountDetailDialog = false }
         )
     }
@@ -547,23 +534,21 @@ fun SettingsTab(
 }
 
 // ──────────────────────────────────────
-// 账号详情弹窗（Cookie 凭证编辑 - M3 规范）
+// ──────────────────────────────────────
+// 账号详情弹窗（Cookie 凭证查看 - M3 规范）
 // ──────────────────────────────────────
 
 @Composable
 private fun AccountDetailDialog(
     remid: String,
     sid: String,
-    isLoading: Boolean,
-    onRemidChange: (String) -> Unit,
-    onSidChange: (String) -> Unit,
-    onSave: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
     AlertDialog(
-        onDismissRequest = { if (!isLoading) onDismiss() },
+        onDismissRequest = onDismiss,
         icon = {
             Icon(
                 imageVector = Icons.Default.VpnKey,
@@ -581,6 +566,12 @@ private fun AccountDetailDialog(
         shape = RoundedCornerShape(28.dp),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = stringResource(R.string.hint_cookie_read_only),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 // remid
                 Column {
                     Row(
@@ -595,7 +586,14 @@ private fun AccountDetailDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         IconButton(
-                            onClick = { clipboardManager.setText(AnnotatedString(remid)) },
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(remid))
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_copied_remid),
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(Icons.Default.ContentCopy, stringResource(R.string.cd_copy), modifier = Modifier.size(16.dp))
@@ -604,7 +602,8 @@ private fun AccountDetailDialog(
                     Spacer(Modifier.height(4.dp))
                     OutlinedTextField(
                         value = remid,
-                        onValueChange = onRemidChange,
+                        onValueChange = {},
+                        readOnly = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = false,
@@ -627,7 +626,14 @@ private fun AccountDetailDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         IconButton(
-                            onClick = { clipboardManager.setText(AnnotatedString(sid)) },
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(sid))
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_copied_sid),
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(Icons.Default.ContentCopy, stringResource(R.string.cd_copy), modifier = Modifier.size(16.dp))
@@ -636,7 +642,8 @@ private fun AccountDetailDialog(
                     Spacer(Modifier.height(4.dp))
                     OutlinedTextField(
                         value = sid,
-                        onValueChange = onSidChange,
+                        onValueChange = {},
+                        readOnly = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = false,
@@ -647,27 +654,30 @@ private fun AccountDetailDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = onSave,
-                enabled = !isLoading,
+            TextButton(
+                onClick = onDismiss,
                 shape = RoundedCornerShape(100)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        Modifier.size(18.dp), strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text(stringResource(R.string.btn_save_and_verify))
-                }
+                Text(stringResource(R.string.btn_close))
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !isLoading,
+            FilledTonalButton(
+                onClick = {
+                    val fullCookie = "remid=$remid; sid=$sid"
+                    clipboardManager.setText(AnnotatedString(fullCookie))
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.toast_copied_all_cookies),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                },
                 shape = RoundedCornerShape(100)
-            ) { Text(stringResource(R.string.btn_close)) }
+            ) {
+                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.btn_copy_all_cookies))
+            }
         }
     )
 }
