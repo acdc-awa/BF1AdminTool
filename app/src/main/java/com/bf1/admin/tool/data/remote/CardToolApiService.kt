@@ -130,7 +130,7 @@ class CardToolApiService {
                 val err = json.getJSONObject("error")
                 throw GatewayError(err.optInt("code"), err.optString("message"), method)
             }
-            return json.getJSONObject("result")
+            return gatewayResult(json)
         }
     }
 
@@ -238,6 +238,18 @@ class CardToolApiService {
         gatewayRequest(sessionId, "Game.leaveGame", JSONObject().apply { put("gameId", gameId) })
     }
 }
+
+/**
+ * 取 JSON-RPC 响应里的 `result`，不要求它一定是对象。
+ *
+ * 网关的 result 类型随方法而异：`RSP.updateServer` 固定回字符串 `"success"`，
+ * 服务端状态切换时个别查询（如 `GameServer.getServerDetails`）会回 `null`。
+ * 原版 CardTool 的 gatewayRequest 直接 `return resp.result`，不做类型约束，
+ * 只有 `error` 字段才代表失败。这里同样只认 `error`，其余结果统一归一化为
+ * JSONObject（非对象→空对象），避免把成功调用误判成解析错误。
+ */
+internal fun gatewayResult(json: JSONObject): JSONObject =
+    json.optJSONObject("result") ?: JSONObject()
 
 /** JSONObject → 纯 Map（用于把 serverSettings.customGameSettings 传给 payload 构造）。 */
 fun JSONObject.toMap(): Map<String, Any?> {

@@ -2,7 +2,9 @@ package com.bf1.admin.tool.ui.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,6 +40,7 @@ fun HomeScreen(
     val servers by viewModel.servers.collectAsState()
     val activeServer by viewModel.activeServer.collectAsState()
     val adminList by viewModel.adminList.collectAsState()
+    val adminListUiState by viewModel.adminListUiState.collectAsState()
     val isRefreshingAdminList by viewModel.isRefreshingAdminList.collectAsState()
     val expiredAccount by viewModel.expiredAccount.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -84,20 +87,46 @@ fun HomeScreen(
     // 弹窗
     // ═══════════════════════════════════════════
 
+    // ═══════════════════════════════════════════
+    // 弹窗体系 (Material 3 规范)
+    // ═══════════════════════════════════════════
+
     // 账号失效
     if (expiredAccount != null) {
         AlertDialog(
             onDismissRequest = { viewModel.clearExpiredAccount() },
-            title = { Text("账号失效") },
-            text = { Text("当前帐号 ${expiredAccount?.name} cookies已失效，是否更新？") },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    "账号凭证失效",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            },
+            text = {
+                Text(
+                    "当前账号 ${expiredAccount?.name} 的 Cookie 已过期，是否立即重新登录？",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(28.dp),
             confirmButton = {
-                Button(onClick = {
-                    viewModel.clearExpiredAccount()
-                    onNavigateToLogin()
-                }) { Text("是") }
+                Button(
+                    onClick = {
+                        viewModel.clearExpiredAccount()
+                        onNavigateToLogin()
+                    }
+                ) { Text("重新登录") }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.clearExpiredAccount() }) { Text("否") }
+                TextButton(onClick = { viewModel.clearExpiredAccount() }) { Text("稍后") }
             }
         )
     }
@@ -106,84 +135,131 @@ fun HomeScreen(
     if (showAccountSwitcher) {
         AlertDialog(
             onDismissRequest = { showAccountSwitcher = false },
-            title = { Text("选择账号") },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text("切换账号", style = MaterialTheme.typography.headlineSmall)
+            },
+            shape = RoundedCornerShape(28.dp),
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     accounts.forEach { account ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        ) {
-                            val rowModifier = if (activeAccount?.id != account.id) {
-                                Modifier.fillMaxWidth().clickable {
-                                    viewModel.switchAccount(account)
+                        val isSelected = activeAccount?.id == account.id
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable {
+                                    if (!isSelected) {
+                                        viewModel.switchAccount(account)
+                                    }
                                     showAccountSwitcher = false
-                                }.padding(12.dp)
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                             } else {
-                                Modifier.fillMaxWidth().padding(12.dp)
-                            }
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                            border = if (isSelected) {
+                                androidx.compose.foundation.BorderStroke(
+                                    1.5.dp,
+                                    MaterialTheme.colorScheme.primary
+                                )
+                            } else null
+                        ) {
                             Row(
-                                modifier = rowModifier,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val letters = account.name.take(2).uppercase()
                                 Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFFF38A41),
-                                    modifier = Modifier.size(40.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    },
+                                    modifier = Modifier.size(42.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
-                                            letters, color = Color.White,
-                                            style = MaterialTheme.typography.titleMedium
+                                            text = letters,
+                                            color = if (isSelected) {
+                                                MaterialTheme.colorScheme.onPrimary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSecondaryContainer
+                                            },
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                         )
                                     }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(account.name, style = MaterialTheme.typography.bodyLarge)
-                                    if (activeAccount?.id == account.id) {
+                                    Text(
+                                        text = account.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal
+                                    )
+                                    if (isSelected) {
                                         Text(
-                                            "当前登录", style = MaterialTheme.typography.bodySmall,
+                                            text = "当前使用中",
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
                                 Spacer(Modifier.width(8.dp))
-                                TextButton(
+                                IconButton(
                                     onClick = {
                                         pendingDeleteAccount = account
                                         showAccountDeleteDialog = true
                                     },
-                                    modifier = Modifier.height(32.dp),
-                                    colors = ButtonDefaults.textButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.error
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "移除账号",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                ) { Text("移除") }
+                                }
                             }
                         }
                     }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    TextButton(
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    OutlinedButton(
                         onClick = {
                             showAccountSwitcher = false
                             onNavigateToLogin()
                         },
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Add, null)
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("添加其他账号")
+                        Text("登录添加其他账号")
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showAccountSwitcher = false }) { Text("关闭") }
+                TextButton(onClick = { showAccountSwitcher = false }) { Text("完成") }
             }
         )
     }
@@ -195,8 +271,23 @@ fun HomeScreen(
                 showAccountDeleteDialog = false
                 pendingDeleteAccount = null
             },
-            title = { Text("删除账号") },
-            text = { Text("你确定要删除吗？") },
+            icon = {
+                Icon(
+                    Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = { Text("删除账号", style = MaterialTheme.typography.headlineSmall) },
+            text = {
+                Text(
+                    "确定要删除账号「${pendingDeleteAccount?.name}」吗？该账号保存的凭据将被清理。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(28.dp),
             confirmButton = {
                 Button(
                     onClick = {
@@ -204,20 +295,18 @@ fun HomeScreen(
                         showAccountDeleteDialog = false
                         pendingDeleteAccount = null
                     },
-                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFDC2626),
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
                     )
-                ) { Text("确认") }
+                ) { Text("确认删除") }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
                         showAccountDeleteDialog = false
                         pendingDeleteAccount = null
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)
+                    }
                 ) { Text("取消") }
             }
         )
@@ -230,8 +319,23 @@ fun HomeScreen(
                 showServerDeleteDialog = false
                 pendingDeleteServer = null
             },
-            title = { Text("删除服务器") },
-            text = { Text("你确定要删除吗？") },
+            icon = {
+                Icon(
+                    Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = { Text("删除服务器", style = MaterialTheme.typography.headlineSmall) },
+            text = {
+                Text(
+                    "确定要从列表中移除服务器「${pendingDeleteServer?.serverName}」吗？",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(28.dp),
             confirmButton = {
                 Button(
                     onClick = {
@@ -239,20 +343,18 @@ fun HomeScreen(
                         showServerDeleteDialog = false
                         pendingDeleteServer = null
                     },
-                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFDC2626),
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
                     )
-                ) { Text("确认") }
+                ) { Text("确认删除") }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
                         showServerDeleteDialog = false
                         pendingDeleteServer = null
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)
+                    }
                 ) { Text("取消") }
             }
         )
@@ -265,8 +367,23 @@ fun HomeScreen(
                 showAdminDeleteDialog = false
                 pendingDeleteAdmin = null
             },
-            title = { Text("移除管理员") },
-            text = { Text("你确定要移除管理员 ${pendingDeleteAdmin?.displayName} 吗？") },
+            icon = {
+                Icon(
+                    Icons.Default.PersonRemove,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = { Text("移除管理员", style = MaterialTheme.typography.headlineSmall) },
+            text = {
+                Text(
+                    "确定要从服务器管理列表中移除「${pendingDeleteAdmin?.displayName}」吗？",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(28.dp),
             confirmButton = {
                 Button(
                     onClick = {
@@ -274,20 +391,18 @@ fun HomeScreen(
                         showAdminDeleteDialog = false
                         pendingDeleteAdmin = null
                     },
-                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFDC2626),
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
                     )
-                ) { Text("确认") }
+                ) { Text("确认移除") }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
                         showAdminDeleteDialog = false
                         pendingDeleteAdmin = null
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Gray)
+                    }
                 ) { Text("取消") }
             }
         )
@@ -302,7 +417,7 @@ fun HomeScreen(
     }
 
     // ═══════════════════════════════════════════
-    // 主布局
+    // 主布局 (Material 3 标准脚手架)
     // ═══════════════════════════════════════════
 
     Scaffold(
@@ -311,24 +426,68 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Text(
-                        when (selectedTab) {
-                            0 -> "管理员管理"
+                        text = when (selectedTab) {
+                            0 -> "上下管理"
                             1 -> "卡行动"
                             else -> "设置"
-                        }
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
                 },
+                actions = {
+                    if (activeAccount != null) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier
+                                .padding(end = 12.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { showAccountSwitcher = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = activeAccount?.name?.take(1)?.uppercase() ?: "A",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = activeAccount?.name ?: "",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 3.dp
+            ) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                    icon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = null) },
                     label = { Text("上下管理") }
                 )
                 NavigationBarItem(
@@ -357,6 +516,8 @@ fun HomeScreen(
                 adminList = adminList,
                 isRefreshingAdminList = isRefreshingAdminList,
                 isLoading = isLoading,
+                uiState = adminListUiState,
+                onNavigateToLogin = onNavigateToLogin,
                 onSwitchServer = { viewModel.switchServer(it) },
                 onRefreshAdminList = { viewModel.loadAdminList() },
                 onAddAdmin = { viewModel.executeAdminAction(it, true) },

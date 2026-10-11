@@ -1,30 +1,31 @@
-﻿package com.bf1.admin.tool.ui.cardtool
+package com.bf1.admin.tool.ui.cardtool
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -36,8 +37,8 @@ import com.bf1.admin.tool.cardtool.MODES
 import com.bf1.admin.tool.ui.common.ServerSelector
 
 /**
- * 卡行动页：服务器选择（与上下管理一致） + 可折叠配置卡 + 操作按钮 + 日志卡片，
- * 整页随内容滚动；服务器未保存 GameID 时提示去设置页重新添加（跨版本更新）。
+ * 卡行动页 (Material 3 顶级质感控制台)：
+ * 服务器选择 + 状态指示卡 + 可折叠配置卡 + 控制动作组 + 高级终端日志区。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,9 +59,10 @@ fun CardToolScreen(
     var selectedMode by rememberSaveable { mutableIntStateOf(0x2) }
     var player by rememberSaveable { mutableIntStateOf(0x40) }
     var minMap by rememberSaveable { mutableStateOf("24") }
-    var primeGids by rememberSaveable { mutableStateOf("") }
+    var primeGid by rememberSaveable { mutableStateOf("") }
     var primeRounds by rememberSaveable { mutableStateOf("2") }
     var primeStay by rememberSaveable { mutableStateOf("5") }
+    var debugLogs by rememberSaveable { mutableStateOf(false) }
     var showConfirm by remember { mutableStateOf(false) }
     var configExpanded by rememberSaveable { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
@@ -83,12 +85,13 @@ fun CardToolScreen(
         mode = selectedMode,
         player = player,
         minMap = minMap,
-        primeGids = primeGids,
+        primeGid = primeGid,
         primeRounds = primeRounds,
-        primeStay = primeStay
+        primeStay = primeStay,
+        debugLogs = debugLogs
     )
 
-    // 整页滚动，新日志到达时滚到底部；用户手动上滑翻阅（距底部 > 120dp）时暂停跟随
+    // 整页滚动，新日志到达时滚到底部；用户手动上滑翻阅时暂停跟随
     val scrollState = rememberScrollState()
     val followThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
     LaunchedEffect(logs.size) {
@@ -101,38 +104,109 @@ fun CardToolScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // 服务器选择器
         ServerSelector(
             servers = servers,
             activeServer = activeServer,
             activeAccount = activeAccount,
             onServerSelected = { viewModel.switchServer(it) },
-            enabled = !isRunning
+            enabled = !isRunning,
+            modifier = Modifier.fillMaxWidth()
         )
 
-        // 未保存 GameID 的提示（跨版本更新：去设置重新添加）
-        if (!gameIdValid) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
+        // 运行状态横幅
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = if (isRunning) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            },
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (isRunning) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                }
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                    modifier = Modifier.size(10.dp)
+                ) {}
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "该服务器未保存 GameID",
+                        text = if (isRunning) "卡行动服务运行中" else "控制台待命",
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.error
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。",
+                        text = if (isRunning) (phase ?: "执行长连接保活中...") else "配置完毕后点击下方按钮启动",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (isRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
         }
 
+        // 未保存 GameID 的警告卡片
+        if (!gameIdValid) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "该服务器未保存 GameID",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            text = "旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 配置卡片
         ConfigCard(
             enabled = !isRunning,
             expanded = configExpanded,
@@ -145,57 +219,73 @@ fun CardToolScreen(
             onMinMapChange = { if (it.length <= 3) minMap = it.filter(Char::isDigit) },
             showAdvanced = showAdvanced,
             onShowAdvancedChange = { showAdvanced = it },
-            primeGids = primeGids,
-            onPrimeGidsChange = { if (it.length <= 200) primeGids = it },
+            primeGid = primeGid,
+            onPrimeGidChange = { if (it.length <= 14) primeGid = it.filter(Char::isDigit) },
             primeRounds = primeRounds,
             onPrimeRoundsChange = { if (it.length <= 2) primeRounds = it.filter(Char::isDigit) },
             primeStay = primeStay,
-            onPrimeStayChange = { if (it.length <= 2) primeStay = it.filter(Char::isDigit) }
+            onPrimeStayChange = { if (it.length <= 2) primeStay = it.filter(Char::isDigit) },
+            debugLogs = debugLogs,
+            onDebugLogsChange = { debugLogs = it }
         )
 
         // ═══════ 操作按钮 ═══════
         if (isRunning) {
-            OutlinedButton(
+            Button(
                 onClick = { viewModel.stop() },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
                 )
             ) {
-                Text("■ 停止")
+                Icon(Icons.Default.Stop, null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("停止卡行动", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { viewModel.startDiagnostic(currentConfig()) },
                     enabled = gameIdValid,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("验证账号")
+                    Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("验证账号", fontWeight = FontWeight.SemiBold)
                 }
                 Button(
                     onClick = { showConfirm = true },
                     enabled = gameIdValid,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
-                    Text("开始卡行动")
+                    Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("开始卡行动", fontWeight = FontWeight.SemiBold)
                 }
             }
-            // 自动锚定失败后的补救：先直连进服占位（锚定需要有人在服内），再锚定当前轮换
-            OutlinedButton(
+
+            // 自动锚定失败后的补救
+            FilledTonalButton(
                 onClick = { viewModel.startManualAnchor(currentConfig()) },
                 enabled = gameIdValid,
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("手动锚定当前轮换（先进服）")
+                Icon(Icons.Default.Login, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("手动锚定当前轮换（先进服）", fontWeight = FontWeight.Medium)
             }
         }
 
-        // 运行日志卡片（与配置卡一样随页面滚动）
+        // 运行日志终端卡片
         LogSection(
             logs = logs,
             phase = phase,
@@ -210,19 +300,30 @@ fun CardToolScreen(
     if (showConfirm) {
         AlertDialog(
             onDismissRequest = { showConfirm = false },
-            title = { Text("开始卡行动") },
-            text = { Text("确认开始？") },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.RocketLaunch,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = { Text("启动卡行动", style = MaterialTheme.typography.headlineSmall) },
+            text = {
+                Text(
+                    "即将对当前服务器开启长时连接保活与占位任务，确认立即启动？",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            shape = RoundedCornerShape(28.dp),
             confirmButton = {
                 Button(
                     onClick = {
                         showConfirm = false
                         viewModel.startCard(currentConfig())
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) { Text("确认") }
+                    }
+                ) { Text("确认启动") }
             },
             dismissButton = {
                 TextButton(onClick = { showConfirm = false }) { Text("取消") }
@@ -234,12 +335,23 @@ fun CardToolScreen(
 @Composable
 private fun EmptyHint(text: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+            )
+        }
     }
 }
 
 // ═══════════════════════════════════════════════════
-// 卡行动配置（可折叠卡片，默认收起）
+// 卡行动配置（可折叠 M3 卡片）
 // ═══════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -256,37 +368,85 @@ private fun ConfigCard(
     onMinMapChange: (String) -> Unit,
     showAdvanced: Boolean,
     onShowAdvancedChange: (Boolean) -> Unit,
-    primeGids: String,
-    onPrimeGidsChange: (String) -> Unit,
+    primeGid: String,
+    onPrimeGidChange: (String) -> Unit,
     primeRounds: String,
     onPrimeRoundsChange: (String) -> Unit,
     primeStay: String,
-    onPrimeStayChange: (String) -> Unit
+    onPrimeStayChange: (String) -> Unit,
+    debugLogs: Boolean,
+    onDebugLogsChange: (Boolean) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            // 头部：标题 + 折叠箭头（整行可点击）
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        ),
+        tonalElevation = 1.dp
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            // 头部：标题 + 图标 + 折叠箭头
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable { onExpandedChange(!expanded) }
-                    .padding(vertical = 12.dp)
+                    .padding(vertical = 10.dp)
             ) {
-                Text(
-                    "卡行动配置",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "收起配置" else "展开配置"
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "卡行动参数配置",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "标准模式"} · $player 人",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (expanded) "收起配置" else "展开配置",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             AnimatedVisibility(visible = expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    HorizontalDivider()
+                Column(
+                    modifier = Modifier.padding(bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                     // 游戏模式下拉
                     var modeMenu by remember { mutableStateOf(false) }
@@ -297,10 +457,20 @@ private fun ConfigCard(
                             readOnly = true,
                             enabled = enabled,
                             label = { Text("游戏模式") },
+                            shape = RoundedCornerShape(12.dp),
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeMenu) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                         )
-                        ExposedDropdownMenu(expanded = modeMenu, onDismissRequest = { modeMenu = false }) {
+                        ExposedDropdownMenu(
+                            expanded = modeMenu,
+                            onDismissRequest = { modeMenu = false },
+                            modifier = Modifier.background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                RoundedCornerShape(12.dp)
+                            )
+                        ) {
                             MODES.toSortedMap().forEach { (mode, name) ->
                                 DropdownMenuItem(
                                     text = { Text(MODE_PRETTY_NAMES[name] ?: name) },
@@ -313,18 +483,24 @@ private fun ConfigCard(
                         }
                     }
 
-                    // 人数
-                    Text("人数", style = MaterialTheme.typography.bodyMedium)
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        val options = listOf(0x40, 0x28, 0x20, 0x18)
-                        options.forEachIndexed { index, value ->
-                            SegmentedButton(
-                                selected = player == value,
-                                onClick = { onPlayerSelected(value) },
-                                enabled = enabled,
-                                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
-                            ) {
-                                Text("$value")
+                    // 人数分段选择器
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "服务器人数规模",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            val options = listOf(0x40, 0x28, 0x20, 0x18)
+                            options.forEachIndexed { index, value ->
+                                SegmentedButton(
+                                    selected = player == value,
+                                    onClick = { onPlayerSelected(value) },
+                                    enabled = enabled,
+                                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+                                ) {
+                                    Text("$value 人", fontWeight = if (player == value) FontWeight.Bold else FontWeight.Normal)
+                                }
                             }
                         }
                     }
@@ -334,45 +510,87 @@ private fun ConfigCard(
                         value = minMap,
                         onValueChange = onMinMapChange,
                         enabled = enabled,
-                        label = { Text("最少地图数") },
+                        label = { Text("最少地图数量") },
+                        shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     // 高级选项（预热）
-                    TextButton(onClick = { onShowAdvancedChange(!showAdvanced) }, enabled = enabled) {
-                        Text(if (showAdvanced) "收起高级选项" else "高级选项")
+                    TextButton(
+                        onClick = { onShowAdvancedChange(!showAdvanced) },
+                        enabled = enabled,
+                        modifier = Modifier.align(Alignment.Start)
+                    ) {
                         Icon(
-                            if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null
+                            imageVector = if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
                         )
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (showAdvanced) "收起预热高级设置" else "展开预热高级设置")
                     }
+
                     AnimatedVisibility(visible = showAdvanced) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             OutlinedTextField(
-                                value = primeGids,
-                                onValueChange = onPrimeGidsChange,
+                                value = primeGid,
+                                onValueChange = onPrimeGidChange,
                                 enabled = enabled,
-                                label = { Text("预设服 GameID（逗号分隔，可多个）") },
-                                minLines = 2,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = primeRounds,
-                                onValueChange = onPrimeRoundsChange,
-                                enabled = enabled,
-                                label = { Text("每服进出次数") },
+                                label = { Text("预设暖服 GameID（选填，单个）") },
+                                placeholder = { Text("例如：11295245190321") },
+                                shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
-                            OutlinedTextField(
-                                value = primeStay,
-                                onValueChange = onPrimeStayChange,
-                                enabled = enabled,
-                                label = { Text("每次停留秒数") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = primeRounds,
+                                    onValueChange = onPrimeRoundsChange,
+                                    enabled = enabled,
+                                    label = { Text("每服进出轮数") },
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = primeStay,
+                                    onValueChange = onPrimeStayChange,
+                                    enabled = enabled,
+                                    label = { Text("停留秒数") },
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                    Text(
+                                        text = "详细 Debug 日志",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "默认关闭（仅展示核心阶段与进度）；开启后输出完整底层协议报文与调试信息",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = debugLogs,
+                                    onCheckedChange = onDebugLogsChange,
+                                    enabled = enabled
+                                )
+                            }
                         }
                     }
                 }
@@ -382,7 +600,7 @@ private fun ConfigCard(
 }
 
 // ═══════════════════════════════════════════════════
-// 运行日志卡片（随页面滚动，不固定）
+// 运行日志终端卡片 (M3 Terminal Console 风格)
 // ═══════════════════════════════════════════════════
 
 @Composable
@@ -395,20 +613,61 @@ private fun LogSection(
     modifier: Modifier = Modifier
 ) {
     val timeFmt = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-    val successColor = if (isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF2E7D32)
-    Card(modifier = modifier) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    phase ?: "运行日志",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f)
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        ),
+        tonalElevation = 2.dp
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            // 工具栏
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
                 )
-                if (isRunning) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "控制台日志",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (phase != null) {
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = phase,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
                 }
-                val clipboard = LocalClipboardManager.current
-                val context = LocalContext.current
+                Spacer(Modifier.weight(1f))
+                if (isRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
                 IconButton(
                     onClick = {
                         clipboard.setText(
@@ -416,73 +675,108 @@ private fun LogSection(
                                 logs.joinToString("\n") { "${timeFmt.format(Date(it.timestamp))} ${it.text}" }
                             )
                         )
-                        Toast.makeText(context, "日志已复制", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show()
                     },
-                    enabled = logs.isNotEmpty()
+                    enabled = logs.isNotEmpty(),
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        Icons.Default.ContentCopy,
+                        imageVector = Icons.Default.ContentCopy,
                         contentDescription = "复制日志",
                         modifier = Modifier.size(18.dp)
                     )
                 }
                 IconButton(
                     onClick = onClear,
-                    enabled = logs.isNotEmpty()
+                    enabled = logs.isNotEmpty(),
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        Icons.Default.DeleteSweep,
+                        imageVector = Icons.Default.DeleteSweep,
                         contentDescription = "清空日志",
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
-            // 结果高亮条：执行结束后的成功/失败摘要
+
+            // 结果高亮横幅
             lastResult?.let { r ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 8.dp)
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (r.success) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        if (r.success) Icons.Default.CheckCircle else Icons.Default.Error,
-                        contentDescription = null,
-                        tint = if (r.success) successColor else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        (if (r.success) "完成: " else "失败: ") + r.message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (r.success) successColor else MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            if (logs.isEmpty()) {
-                Text(
-                    "暂无日志",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            } else {
-                logs.forEach { line ->
                     Row(
-                        verticalAlignment = Alignment.Top,
-                        modifier = Modifier.padding(vertical = 2.dp)
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(
-                            if (line.isError) Icons.Default.Warning else Icons.Default.CheckCircle,
+                            imageVector = if (r.success) Icons.Default.CheckCircle else Icons.Default.Error,
                             contentDescription = null,
-                            tint = if (line.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(14.dp).padding(top = 2.dp)
+                            tint = if (r.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            "${timeFmt.format(Date(line.timestamp))} ${line.text}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (line.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            text = (if (r.success) "完成: " else "失败: ") + r.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (r.success) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
                         )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            )
+
+            // 日志内容输出流
+            if (logs.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "暂无控制台运行日志",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    logs.forEach { line ->
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = timeFmt.format(Date(line.timestamp)),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                modifier = Modifier.padding(top = 1.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = line.text,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (line.isError) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -499,17 +793,19 @@ private fun buildConfig(
     mode: Int,
     player: Int,
     minMap: String,
-    primeGids: String,
+    primeGid: String,
     primeRounds: String,
-    primeStay: String
+    primeStay: String,
+    debugLogs: Boolean
 ): CardToolConfig {
     return CardToolConfig(
         gameId = gameId,
         mode = mode,
         player = player,
         minMap = minMap.toIntOrNull() ?: 1,
-        primeGids = primeGids.split(',', '，', ' ', '\n').map { it.trim() }.filter { it.isNotEmpty() },
+        primeGid = primeGid.trim(),
         primeRounds = primeRounds.toIntOrNull() ?: 2,
-        primeStaySeconds = primeStay.toIntOrNull() ?: 5
+        primeStaySeconds = primeStay.toIntOrNull() ?: 5,
+        debugLogs = debugLogs
     )
 }

@@ -48,8 +48,21 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         _expiredAccount.value = null
     }
 
+    sealed class AdminListUiState {
+        object Idle : AdminListUiState()
+        object Loading : AdminListUiState()
+        object NoServer : AdminListUiState()
+        data class Success(val list: List<EAApiService.AdminInfo>) : AdminListUiState()
+        data class NetworkError(val message: String) : AdminListUiState()
+        data class AuthExpired(val message: String) : AdminListUiState()
+        data class Error(val message: String) : AdminListUiState()
+    }
+
     private val _adminList = MutableStateFlow<List<EAApiService.AdminInfo>>(emptyList())
     val adminList: StateFlow<List<EAApiService.AdminInfo>> = _adminList.asStateFlow()
+
+    private val _adminListUiState = MutableStateFlow<AdminListUiState>(AdminListUiState.Loading)
+    val adminListUiState: StateFlow<AdminListUiState> = _adminListUiState.asStateFlow()
 
     private val _isRefreshingAdminList = MutableStateFlow(false)
     val isRefreshingAdminList: StateFlow<Boolean> = _isRefreshingAdminList.asStateFlow()
@@ -77,13 +90,25 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
+            _adminListUiState.value = AdminListUiState.Loading
             val account = accountRepo.getActive()
             _activeAccount.value = account
             if (account != null) {
-                _activeServer.value = serverRepo.getActiveByOwner(account.personaId)
-                initSession(account)
-                loadAdminList()
+                val server = serverRepo.getActiveByOwner(account.personaId)
+                _activeServer.value = server
                 loadDecryptedCredentials()
+                if (server != null) {
+                    try {
+                        initSession(account)
+                        loadAdminList(isInitial = true)
+                    } catch (e: Exception) {
+                        _adminListUiState.value = classifyError(e)
+                    }
+                } else {
+                    _adminListUiState.value = AdminListUiState.NoServer
+                }
+            } else {
+                _adminListUiState.value = AdminListUiState.Idle
             }
         }
     }
@@ -92,10 +117,21 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             accountRepo.switchActive(account.id)
             _activeAccount.value = account
-            _activeServer.value = serverRepo.getActiveByOwner(account.personaId)
-            initSession(account)
-            loadAdminList()
+            val server = serverRepo.getActiveByOwner(account.personaId)
+            _activeServer.value = server
             loadDecryptedCredentials()
+            if (server != null) {
+                _adminListUiState.value = AdminListUiState.Loading
+                try {
+                    initSession(account)
+                    loadAdminList(isInitial = true)
+                } catch (e: Exception) {
+                    _adminListUiState.value = classifyError(e)
+                }
+            } else {
+                _adminList.value = emptyList()
+                _adminListUiState.value = AdminListUiState.NoServer
+            }
         }
     }
 
@@ -104,7 +140,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             val account = _activeAccount.value ?: return@launch
             serverRepo.switchActive(account.personaId, server.id)
             _activeServer.value = server
-            loadAdminList()
+            loadAdminList(isInitial = true)
         }
     }
 
@@ -114,12 +150,25 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             if (_activeAccount.value?.id == account.id) {
                 val newActive = accountRepo.getActive()
                 _activeAccount.value = newActive
-                _activeServer.value = newActive?.let { serverRepo.getActiveByOwner(it.personaId) }
+                val nextServer = newActive?.let { serverRepo.getActiveByOwner(it.personaId) }
+                _activeServer.value = nextServer
                 if (newActive != null) {
-                    initSession(newActive)
-                    loadAdminList()
+                    loadDecryptedCredentials()
+                    if (nextServer != null) {
+                        _adminListUiState.value = AdminListUiState.Loading
+                        try {
+                            initSession(newActive)
+                            loadAdminList(isInitial = true)
+                        } catch (e: Exception) {
+                            _adminListUiState.value = classifyError(e)
+                        }
+                    } else {
+                        _adminList.value = emptyList()
+                        _adminListUiState.value = AdminListUiState.NoServer
+                    }
                 } else {
                     _adminList.value = emptyList()
+                    _adminListUiState.value = AdminListUiState.Idle
                 }
             }
         }
@@ -130,8 +179,14 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             serverRepo.delete(server)
             if (_activeServer.value?.id == server.id) {
                 val account = _activeAccount.value ?: return@launch
-                _activeServer.value = serverRepo.getActiveByOwner(account.personaId)
-                loadAdminList()
+                val nextServer = serverRepo.getActiveByOwner(account.personaId)
+                _activeServer.value = nextServer
+                if (nextServer != null) {
+                    loadAdminList(isInitial = true)
+                } else {
+                    _adminList.value = emptyList()
+                    _adminListUiState.value = AdminListUiState.NoServer
+                }
             }
         }
     }
@@ -206,12 +261,16 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loadAdminList() {
+    fun loadAdminList(isInitial: Boolean = false) {
         viewModelScope.launch {
             val server = _activeServer.value
             if (server == null) {
                 _adminList.value = emptyList()
+                _adminListUiState.value = AdminListUiState.NoServer
                 return@launch
+            }
+            if (isInitial || _adminList.value.isEmpty()) {
+                _adminListUiState.value = AdminListUiState.Loading
             }
             _isRefreshingAdminList.value = true
             try {
@@ -221,8 +280,11 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 _adminList.value = list
+                _adminListUiState.value = AdminListUiState.Success(list)
             } catch (e: Exception) {
-                _message.emit("获取管理员列表失败: ${e.message}")
+                val classified = classifyError(e)
+                _adminListUiState.value = classified
+                _message.emit("获取管理员列表失败: ${e.message ?: "未知错误"}")
             } finally {
                 _isRefreshingAdminList.value = false
             }
@@ -356,8 +418,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) { credentialManager.getActiveSessionId() }
         } catch (e: EAApiService.CredentialsExpiredException) {
             _expiredAccount.value = account
-        } catch (e: Exception) {
-            // 网络等瞬态错误静默处理，下次操作时 withSessionRetry 会自动重试
+            throw e
         }
     }
 
@@ -374,5 +435,38 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             _expiredAccount.value = _activeAccount.value
             throw ce
         }
+    }
+
+    private fun classifyError(e: Throwable): AdminListUiState {
+        val message = e.message.orEmpty()
+        val isAuthExpired = e is EAApiService.CredentialsExpiredException ||
+            message.contains("Credentials expired", ignoreCase = true) ||
+            message.contains("登录已过期", ignoreCase = true) ||
+            message.contains("Session expired", ignoreCase = true) ||
+            message.contains("401", ignoreCase = true) ||
+            message.contains("-32501", ignoreCase = true) ||
+            message.contains("AUTHORIZATION_REQUIRED", ignoreCase = true)
+
+        if (isAuthExpired) {
+            return AdminListUiState.AuthExpired(if (message.isNotBlank()) message else "EA 凭证已过期，请重新登录")
+        }
+
+        val isNetwork = e is java.net.UnknownHostException ||
+            e is java.net.SocketTimeoutException ||
+            e is java.net.ConnectException ||
+            e is java.net.SocketException ||
+            (e is java.io.IOException && (
+                message.contains("timeout", ignoreCase = true) ||
+                message.contains("connect", ignoreCase = true) ||
+                message.contains("SSL", ignoreCase = true) ||
+                message.contains("route", ignoreCase = true) ||
+                message.contains("unreachable", ignoreCase = true)
+            ))
+
+        if (isNetwork) {
+            return AdminListUiState.NetworkError(if (message.isNotBlank()) message else "网络连接超时或无法访问，请检查网络设置")
+        }
+
+        return AdminListUiState.Error(if (message.isNotBlank()) message else "获取管理员列表失败，请稍后重试")
     }
 }

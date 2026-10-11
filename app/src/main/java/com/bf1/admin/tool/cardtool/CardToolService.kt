@@ -1,4 +1,4 @@
-﻿package com.bf1.admin.tool.cardtool
+package com.bf1.admin.tool.cardtool
 
 import com.bf1.admin.tool.blaze.BlazeClient
 import com.bf1.admin.tool.blaze.BlazeConnectionClosedException
@@ -33,9 +33,24 @@ class CardToolService(
 ) {
 
     sealed class Event {
-        data class Log(val message: String, val isError: Boolean = false) : Event()
+        data class Log(
+            val message: String,
+            val isError: Boolean = false,
+            val isDebug: Boolean = false
+        ) : Event()
         data class Phase(val phase: String) : Event()
         data class Finished(val success: Boolean, val message: String) : Event()
+    }
+
+    private fun log(
+        config: CardToolConfig,
+        onEvent: (Event) -> Unit,
+        message: String,
+        isError: Boolean = false,
+        isDebug: Boolean = false
+    ) {
+        if (isDebug && !config.debugLogs) return
+        onEvent(Event.Log(message = message, isError = isError, isDebug = isDebug))
     }
 
     /** 一次已建立的 Blaze 会话：连接 + 登录 + 两件套上报都已完成。 */
@@ -62,25 +77,25 @@ class CardToolService(
         try {
             onEvent(Event.Phase("手动锚定"))
             val gameId = requireGameId(config)
-            onEvent(Event.Log("手动锚定：获取 Gateway Session"))
+            log(config, onEvent, "手动锚定：获取 Gateway Session", isDebug = true)
             val sessionId = credentialManager.getActiveSessionId()
 
-            onEvent(Event.Log("手动锚定：查询服务器（getFullServerDetails）"))
+            log(config, onEvent, "手动锚定：查询服务器（getFullServerDetails）", isDebug = true)
             val rsp = api.getFullServerDetails(sessionId, config.gameId)
-            onEvent(Event.Log("服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})"))
+            log(config, onEvent, "服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})")
 
             val adminIds = rsp.adminList.map { it.personaId }.toSet() + rsp.ownerPersonaId
             // 与自动卡服共用同一条会话建立路径：连接 → 登录 → 两件套上报（setClientState + updateNetworkInfo）
-            val session = openBlazeSession(onEvent)
+            val session = openBlazeSession(config, onEvent)
             val client = session.client
             val login = session.login
             try {
                 if (login.personaId.toString() !in adminIds) {
-                    onEvent(Event.Log("手动锚定：警告，当前账号不是该服务器管理员", isError = true))
+                    log(config, onEvent, "手动锚定：警告，当前账号不是该服务器管理员", isError = true)
                 }
 
                 // 锚定前置条件：服里必须有人。直连进服占位（对齐 bf1_direct_join_stay_forever.py）。
-                onEvent(Event.Log("手动锚定：Blaze 直连进服占位（锚定需要有人在服内）"))
+                log(config, onEvent, "手动锚定：Blaze 直连进服占位（锚定需要有人在服内）", isDebug = true)
                 val joinResult = client.joinGame(
                     gameId = gameId,
                     personaId = login.personaId,
@@ -95,15 +110,15 @@ class CardToolService(
                     onEvent(Event.Finished(false, "手动锚定失败：进服失败 ${joinResult.reason}"))
                     return
                 }
-                onEvent(Event.Log("手动锚定：进服成功，等待服务器状态稳定（2 秒）"))
+                log(config, onEvent, "手动锚定：进服成功，等待服务器状态稳定（2 秒）")
                 delay(2000)
 
                 val current = api.getServerDetails(sessionId, config.gameId)
-                onEvent(
-                    Event.Log(
-                        "当前状态: ${current.slots.occupied}/${current.slots.soldierMax} " +
-                            "(${current.rotation.size}图) mapMode=${current.mapMode} guid=${current.guid}"
-                    )
+                log(
+                    config,
+                    onEvent,
+                    "当前状态: ${current.slots.occupied}/${current.slots.soldierMax} " +
+                        "(${current.rotation.size}图) mapMode=${current.mapMode} guid=${current.guid}"
                 )
                 if (current.guid.isEmpty()) {
                     onEvent(Event.Finished(false, "手动锚定失败：服务器 guid 为空"))
@@ -115,7 +130,7 @@ class CardToolService(
                 }
 
                 val pinned = buildPinnedRotation(current.rotation, config.mode)
-                onEvent(Event.Log("锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}"))
+                log(config, onEvent, "锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}", isDebug = true)
                 val anchorPayload = buildServerUpdatePayload(
                     serverId = rsp.serverId,
                     name = rsp.serverSettings.name,
@@ -126,9 +141,9 @@ class CardToolService(
                     playerLimit = config.player,
                     mapsOverride = pinned
                 )
-                val error = performAnchor(sessionId, current.guid, anchorPayload, "手动锚定", onEvent)
+                val error = performAnchor(config, sessionId, current.guid, anchorPayload, "手动锚定", onEvent)
                 if (error == null) {
-                    onEvent(Event.Log("手动锚定：锚定完成，保持占位 3 秒后断开"))
+                    log(config, onEvent, "手动锚定：锚定完成，保持占位 3 秒后断开")
                     delay(3000)
                     onEvent(Event.Finished(true, "手动锚定完成，请尽快进入服务器"))
                 } else {
@@ -146,11 +161,11 @@ class CardToolService(
 
     private suspend fun runScoped(config: CardToolConfig, onEvent: (Event) -> Unit, diagnosticOnly: Boolean) {
         try {
-            onEvent(Event.Log("正在初始化"))
+            log(config, onEvent, "正在初始化", isDebug = true)
             // 网关 sessionId 与管理页共用同一份缓存（同一网关、同一换法），
             // Blaze authCode 一次性、每次登录现取。
             val sessionId = credentialManager.getActiveSessionId()
-            val session = openBlazeSession(onEvent)
+            val session = openBlazeSession(config, onEvent)
             try {
                 if (diagnosticOnly) {
                     runDiagnosticBody(config, session.login, session.client, sessionId, onEvent)
@@ -180,25 +195,25 @@ class CardToolService(
     ) {
         val gameId = requireGameId(config)
         val rsp = api.getFullServerDetails(sessionId, config.gameId)
-        onEvent(Event.Log("服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})"))
+        log(config, onEvent, "服务器: ${rsp.serverSettings.name} (serverId=${rsp.serverId})")
 
         val adminIds = rsp.adminList.map { it.personaId }.toSet() + rsp.ownerPersonaId
         val isAdmin = login.personaId.toString() in adminIds
-        onEvent(Event.Log(if (isAdmin) "管理员身份已确认" else "警告：当前账号不是该服务器管理员"))
+        log(config, onEvent, if (isAdmin) "管理员身份已确认" else "警告：当前账号不是该服务器管理员", isError = !isAdmin)
 
-        onEvent(Event.Log("查询服务器..."))
+        log(config, onEvent, "查询服务器...")
         val data = client.getFullGameData(gameId)
         if (data.errorName != null) {
-            onEvent(Event.Log("getFullGameData 失败: ${data.errorName} (errc=${data.errc})", isError = true))
+            log(config, onEvent, "getFullGameData 失败: ${data.errorName} (errc=${data.errc})", isError = true)
         }
-        onEvent(
-            Event.Log(
-                "getFullGameData: protocolVersion=${data.protocolVersion} " +
-                    "players=${data.players.size} roles=${data.roles.joinToString(",")}"
-            )
+        log(
+            config,
+            onEvent,
+            "getFullGameData: protocolVersion=${data.protocolVersion} " +
+                "players=${data.players.size} roles=${data.roles.joinToString(",")}"
         )
         val name = data.gameInfo?.get("GNAM 1")?.toString().orEmpty()
-        if (name.isNotEmpty()) onEvent(Event.Log("服务器名(GAME): $name"))
+        if (name.isNotEmpty()) log(config, onEvent, "服务器名(GAME): $name")
         onEvent(Event.Finished(true, "诊断完成：登录/Blaze/服务器查询链路正常"))
     }
 
@@ -234,7 +249,7 @@ class CardToolService(
                 val detail = describe(e)
                 if (detail != lastUpdateServerWarn) {
                     lastUpdateServerWarn = detail
-                    onEvent(Event.Log("[$tag] RSP.updateServer 失败: $detail", isError = true))
+                    log(config, onEvent, "[$tag] RSP.updateServer 失败: $detail", isError = true)
                 }
             }
         }
@@ -245,8 +260,8 @@ class CardToolService(
         if (login.personaId.toString() !in adminIds) {
             throw IllegalStateException("该用户不是服务器管理员")
         }
-        onEvent(Event.Log("管理员身份已确认: ${rsp.serverSettings.name}"))
-        onEvent(Event.Log("选定模式: ${config.modePrettyName} [${config.player}人]"))
+        log(config, onEvent, "管理员身份已确认: ${rsp.serverSettings.name}")
+        log(config, onEvent, "选定模式: ${config.modePrettyName} [${config.player}人]")
 
         val payloadBase = buildServerUpdatePayload(
             serverId = rsp.serverId,
@@ -258,13 +273,13 @@ class CardToolService(
             playerLimit = config.player
         )
 
-        // 2. 预热阶段（可选）
-        if (config.primeGids.isNotEmpty()) {
+        // 2. 预热阶段（可选，仅支持单个预设服）
+        if (config.primeGid.isNotBlank()) {
             runPrimePhase(config, gameId, login, client, sessionId, onEvent)
         }
 
         // 3. 原版：进循环前先打一次基础轮换（失败忽略）
-        onEvent(Event.Log("发送初始 RSP.updateServer（原版在循环前调用一次）"))
+        log(config, onEvent, "发送初始 RSP.updateServer（原版在循环前调用一次）", isDebug = true)
         updateQuiet(payloadBase, "初始")
 
         // 4. 主循环（Blaze 直连进服 → updateServer → sleep 2s → getServerDetails → 锚定/重试）
@@ -275,20 +290,20 @@ class CardToolService(
             loopCount++
             try {
                 if (socketDead) {
-                    onEvent(Event.Log("[#$loopCount] Blaze 连接已断开，重建连接"))
-                    val re = reconnect(onEvent)
+                    log(config, onEvent, "[#$loopCount] Blaze 连接已断开，重建连接")
+                    val re = reconnect(config, onEvent)
                     socket.close()
                     socket = re.socket
                     client = re.client
                     login = re.login
                     socketDead = false
-                    onEvent(Event.Log("[#$loopCount] 重连成功: ${re.login.displayName} (personaId=${re.login.personaId})"))
+                    log(config, onEvent, "[#$loopCount] 重连成功: ${re.login.displayName} (personaId=${re.login.personaId})")
                 }
 
                 // 纯 Blaze 直连进服（对齐 bf1_direct_join_stay_forever.py）：
                 // 不发任何 HTTP 进服请求、不 reserveSlot；joinGame 内部完成
                 // setClientState/updateNetworkInfo → getFullGameData → joinGame(gent=0) → 轮询 PROS 确认
-                onEvent(Event.Log("[#$loopCount] Blaze 直连进服（无 HTTP reserveSlot）"))
+                log(config, onEvent, "[#$loopCount] Blaze 直连进服（无 HTTP reserveSlot）", isDebug = true)
                 val joinResult = client.joinGame(
                     gameId = gameId,
                     personaId = login.personaId,
@@ -303,7 +318,7 @@ class CardToolService(
                 joinResult.protocolVersion?.let { protocolVersionCache = it }
                 if (joinResult.roles.isNotEmpty()) rolesCache = joinResult.roles
                 if (!joinResult.ok) {
-                    onEvent(Event.Log("[#$loopCount] 进服失败: ${joinResult.reason}", isError = true))
+                    log(config, onEvent, "[#$loopCount] 进服失败: ${joinResult.reason}", isError = true)
                     if (joinResult.socketDead) {
                         socketDead = true
                         continue
@@ -312,7 +327,7 @@ class CardToolService(
                     delay(1000)
                     continue
                 }
-                onEvent(Event.Log("[#$loopCount] 进服成功"))
+                log(config, onEvent, "[#$loopCount] 进服成功")
 
                 updateQuiet(payloadBase, "循环#$loopCount")
                 delay(2000)
@@ -320,17 +335,17 @@ class CardToolService(
                 val current = api.getServerDetails(sessionId, config.gameId)
                 val firstMap = current.rotation.firstOrNull()?.mapPrettyName.orEmpty()
                 val modesText = current.rotation.map { it.modePrettyName }.distinct().joinToString(" ")
-                onEvent(
-                    Event.Log(
-                        "[#$loopCount] 状态: ${current.slots.occupied}/${current.slots.soldierMax} $firstMap " +
-                            "(${current.rotation.size}图) $modesText | mapMode=${current.mapMode} guid=${current.guid}"
-                    )
+                log(
+                    config,
+                    onEvent,
+                    "[#$loopCount] 图池检查: ${current.slots.occupied}/${current.slots.soldierMax} $firstMap " +
+                        "(${current.rotation.size}图) $modesText | mapMode=${current.mapMode} guid=${current.guid}"
                 )
 
                 if (current.mapMode == modeName && current.rotation.size >= config.minMap) {
-                    onEvent(Event.Log("[#$loopCount] 地图符合条件，正在锚定"))
+                    log(config, onEvent, "[#$loopCount] 地图符合条件，正在锚定")
                     val pinned = buildPinnedRotation(current.rotation, config.mode)
-                    onEvent(Event.Log("[#$loopCount] 锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}"))
+                    log(config, onEvent, "[#$loopCount] 锚定轮换: ${pinned.size} 图，gameMode=${pinned.firstOrNull()?.get("gameMode")}", isDebug = true)
                     val anchorPayload = buildServerUpdatePayload(
                         serverId = rsp.serverId,
                         name = rsp.serverSettings.name,
@@ -341,21 +356,21 @@ class CardToolService(
                         playerLimit = config.player,
                         mapsOverride = pinned
                     )
-                    val error = performAnchor(sessionId, current.guid, anchorPayload, "#$loopCount 自动锚定", onEvent)
+                    val error = performAnchor(config, sessionId, current.guid, anchorPayload, "#$loopCount 自动锚定", onEvent)
                     if (error != null) {
-                        onEvent(Event.Log("[#$loopCount] 锚定失败，可点「手动锚定」重试: $error", isError = true))
+                        log(config, onEvent, "[#$loopCount] 锚定失败，可点「手动锚定」重试: $error", isError = true)
                     }
-                    onEvent(Event.Log("已完成，请尽快进入服务器"))
+                    log(config, onEvent, "[#$loopCount] 锚定完成，请尽快进入服务器")
                     onEvent(Event.Finished(true, "卡服完成，请尽快进入服务器"))
                     return
                 }
 
                 // 条件不满足 → 离开重试（对齐原版顺序）
-                onEvent(
-                    Event.Log(
-                        "[#$loopCount] 条件不满足(mapMode=${current.mapMode} 需要 $modeName，" +
-                            "${current.rotation.size}/${config.minMap} 图)，离开重试"
-                    )
+                log(
+                    config,
+                    onEvent,
+                    "[#$loopCount] 图池未就绪 (当前 mapMode=${current.mapMode}，需要 $modeName；" +
+                        "当前 ${current.rotation.size}/${config.minMap} 图)，离开重试"
                 )
                 runCatching { api.leaveGame(sessionId, config.gameId) }
                 delay(1000)
@@ -363,18 +378,18 @@ class CardToolService(
                 updateQuiet(payloadBase, "重试#$loopCount")
                 delay(3000)
                 if (current.slots.occupied > 1) {
-                    onEvent(Event.Log("[#$loopCount] 服务器有其他玩家进入，等待中"))
+                    log(config, onEvent, "[#$loopCount] 服务器有其他玩家进入，等待中")
                     delay(10_000)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onEvent(Event.Log("[#$loopCount] 循环出错: ${describe(e)}", isError = true))
+                log(config, onEvent, "[#$loopCount] 循环出错: ${describe(e)}", isError = true)
                 if (e is BlazeConnectionClosedException) {
                     socketDead = true
                 } else if (e is GatewayError && (e.code == -32501 || e.code == -32504)) {
                     // 缓存的 session 已被网关废弃：强制失效后重换（走 CredentialManager 统一路径）
-                    onEvent(Event.Log("[#$loopCount] Gateway Session 失效，强制重换..."))
+                    log(config, onEvent, "[#$loopCount] Gateway Session 失效，强制重换...")
                     credentialManager.invalidateActiveSession()
                     sessionId = credentialManager.getActiveSessionId()
                 }
@@ -383,7 +398,7 @@ class CardToolService(
         }
     }
 
-    /** 预热阶段：先进出暖服若干次（对应 CardTool runPrimePhase）。 */
+    /** 预热阶段：先进出暖服若干次（仅支持单个预设服）。 */
     private suspend fun runPrimePhase(
         config: CardToolConfig,
         gameId: Long,
@@ -392,42 +407,39 @@ class CardToolService(
         sessionId: String,
         onEvent: (Event) -> Unit
     ) {
-        val gids = config.primeGids.filter { it != config.gameId }
-        if (gids.isEmpty()) return
-        onEvent(
-            Event.Log(
-                "预热阶段开始：暖服=[${gids.joinToString(",")}] 每服 ${config.primeRounds} 次，" +
-                    "每次停留 ${config.primeStaySeconds} 秒"
-            )
+        val primeGid = config.primeGid.trim()
+        if (primeGid.isEmpty() || primeGid == config.gameId) return
+        val g = primeGid.toLongOrNull() ?: return
+        log(
+            config,
+            onEvent,
+            "预热阶段开始：暖服 $primeGid 共 ${config.primeRounds} 次，每次停留 ${config.primeStaySeconds} 秒"
         )
         for (round in 1..config.primeRounds) {
-            for (gid in gids) {
-                currentCoroutineContext().ensureActive()
-                val g = gid.toLongOrNull() ?: continue
-                onEvent(Event.Log("预热 第$round/${config.primeRounds}轮 Blaze 直连进暖服 $gid"))
-                val r = client.joinGame(
-                    gameId = g,
-                    personaId = login.personaId,
-                    platformId = login.nucleusId,
-                    connectionGroupId = login.connectionGroupId,
-                    userExtendedData = login.userExtendedData,
-                    protocolVersionCache = "",
-                    postJoinState = false,
-                    joinConfirmTimeoutMs = 12_000,
-                    joinPollIntervalMs = 500
-                )
-                if (!r.ok) {
-                    onEvent(Event.Log("预热 进服失败($gid): ${r.reason}", isError = true))
-                    continue
-                }
-                onEvent(Event.Log("预热 已在暖服 $gid，停留 ${config.primeStaySeconds} 秒"))
-                delay(config.primeStaySeconds * 1000L)
-                runCatching { api.leaveGame(sessionId, gid) }
-                onEvent(Event.Log("预热 已离开暖服 $gid"))
-                delay(1500)
+            currentCoroutineContext().ensureActive()
+            log(config, onEvent, "进服进度 ($round/${config.primeRounds}) 直连进暖服 $primeGid")
+            val r = client.joinGame(
+                gameId = g,
+                personaId = login.personaId,
+                platformId = login.nucleusId,
+                connectionGroupId = login.connectionGroupId,
+                userExtendedData = login.userExtendedData,
+                protocolVersionCache = "",
+                postJoinState = false,
+                joinConfirmTimeoutMs = 12_000,
+                joinPollIntervalMs = 500
+            )
+            if (!r.ok) {
+                log(config, onEvent, "预热进服失败($primeGid): ${r.reason}", isError = true)
+                continue
             }
+            log(config, onEvent, "预热已在暖服 $primeGid，停留 ${config.primeStaySeconds} 秒", isDebug = true)
+            delay(config.primeStaySeconds * 1000L)
+            runCatching { api.leaveGame(sessionId, primeGid) }
+            log(config, onEvent, "预热已离开暖服 $primeGid", isDebug = true)
+            delay(1500)
         }
-        onEvent(Event.Log("预热阶段完成"))
+        log(config, onEvent, "预热阶段完成")
     }
 
     // ═══════════════════════════════════════════════════
@@ -440,23 +452,23 @@ class CardToolService(
      *
      * 自动卡服、断线重连、手动锚定都必须走这里，保证三条路径的进服前置条件完全一致。
      */
-    private suspend fun openBlazeSession(onEvent: (Event) -> Unit): BlazeSession {
-        onEvent(Event.Log("获取 Blaze AuthCode..."))
+    private suspend fun openBlazeSession(config: CardToolConfig, onEvent: (Event) -> Unit): BlazeSession {
+        log(config, onEvent, "获取 Blaze AuthCode...", isDebug = true)
         // authCode 一次性：每次建立/重建会话都必须现取新码（轮换落库由 CredentialManager 负责）
         val authCode = credentialManager.acquireBlazeAuthCode()
         val (host, port) = api.getBlazeServerAddress()
-        onEvent(Event.Log("Blaze 服务器: $host:$port"))
-        onEvent(Event.Log("连接 Blaze 并登录..."))
+        log(config, onEvent, "Blaze 服务器: $host:$port", isDebug = true)
+        log(config, onEvent, "连接 Blaze 并登录...", isDebug = true)
         val socket = BlazeSocket(host, port)
         try {
             socket.connect()
-            onEvent(Event.Log("Blaze TCP/TLS 已连接"))
-            val client = BlazeClient(socket, onDebugError = { msg -> onEvent(Event.Log("[blaze] $msg")) })
+            log(config, onEvent, "Blaze TCP/TLS 已连接", isDebug = true)
+            val client = BlazeClient(socket, onDebugError = { msg -> log(config, onEvent, "[blaze] $msg", isDebug = true) })
             val login = client.login(authCode)
-            onEvent(Event.Log("已登录 User: ${login.displayName} (personaId=${login.personaId})"))
+            log(config, onEvent, "已登录 User: ${login.displayName} (personaId=${login.personaId})", isDebug = true)
             // 每个 socket 会话只发一次两件套（对齐 Python connect_session，join 之前）
             runCatching { client.reportClientState() }
-                .onFailure { onEvent(Event.Log("上报客户端状态失败: ${it.message}", isError = true)) }
+                .onFailure { log(config, onEvent, "上报客户端状态失败: ${it.message}", isError = true) }
             return BlazeSession(socket, client, login)
         } catch (e: Exception) {
             socket.close()
@@ -464,7 +476,8 @@ class CardToolService(
         }
     }
 
-    private suspend fun reconnect(onEvent: (Event) -> Unit): BlazeSession = openBlazeSession(onEvent)
+    private suspend fun reconnect(config: CardToolConfig, onEvent: (Event) -> Unit): BlazeSession =
+        openBlazeSession(config, onEvent)
 
     private fun requireGameId(config: CardToolConfig): Long =
         config.gameId.toLongOrNull() ?: throw IllegalArgumentException("gameId 无效：${config.gameId}")
@@ -476,22 +489,23 @@ class CardToolService(
      * @return 成功返回 null，失败返回错误描述
      */
     private suspend fun performAnchor(
+        config: CardToolConfig,
         sessionId: String,
         persistedGameId: String,
         anchorPayload: Map<String, Any?>,
         tag: String,
         onEvent: (Event) -> Unit
     ): String? = try {
-        onEvent(Event.Log("[$tag] RSP.chooseLevel #1 persistedGameId=$persistedGameId levelIndex=0"))
+        log(config, onEvent, "[$tag] RSP.chooseLevel #1 persistedGameId=$persistedGameId levelIndex=0", isDebug = true)
         api.chooseLevel(sessionId, persistedGameId, 0)
         runCatching { api.updateServer(sessionId, anchorPayload) }
             .onFailure {
                 if (!isBannerNoise(it)) {
-                    onEvent(Event.Log("[$tag] RSP.updateServer 失败: ${describe(it)}", isError = true))
+                    log(config, onEvent, "[$tag] RSP.updateServer 失败: ${describe(it)}", isError = true)
                 }
             }
         delay(1000)
-        onEvent(Event.Log("[$tag] RSP.chooseLevel #2 persistedGameId=$persistedGameId levelIndex=0"))
+        log(config, onEvent, "[$tag] RSP.chooseLevel #2 persistedGameId=$persistedGameId levelIndex=0", isDebug = true)
         api.chooseLevel(sessionId, persistedGameId, 0)
         null
     } catch (e: Exception) {

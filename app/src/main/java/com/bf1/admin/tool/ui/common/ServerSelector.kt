@@ -1,42 +1,32 @@
-﻿package com.bf1.admin.tool.ui.common
+package com.bf1.admin.tool.ui.common
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 
 /**
- * 服务器选择器（下拉），「上下管理」与「卡行动」共用同一样式。
+ * 服务器选择器（顶级 Material 3 风格容器），「上下管理」与「卡行动」共用。
  * [enabled] 为 false 时禁用（如卡行动运行中），默认开启。
  */
 @Composable
@@ -45,6 +35,7 @@ fun ServerSelector(
     activeServer: ServerEntity?,
     activeAccount: AccountEntity?,
     onServerSelected: (ServerEntity) -> Unit,
+    modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -57,37 +48,94 @@ fun ServerSelector(
     )
 
     Box(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        modifier = modifier
     ) {
-        OutlinedButton(
-            onClick = { expanded = !expanded },
-            enabled = enabled,
-            shape = RoundedCornerShape(12.dp),
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .onSizeChanged { buttonWidth = it.width }
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(enabled = enabled) { expanded = !expanded }
+                .onSizeChanged { buttonWidth = it.width },
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            ),
+            tonalElevation = 2.dp
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                // 图标徽章
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (enabled) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                    modifier = Modifier.size(38.dp)
                 ) {
-                    Icon(Icons.Default.Dns, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Dns,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = if (enabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                // 标题与服务器名称
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        activeServer?.serverName ?: "未选择服务器",
-                        maxLines = 1
+                        text = "当前服务器",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = activeServer?.serverName ?: "未选择服务器",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (activeServer != null) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
-                Icon(
-                    Icons.Default.ArrowDropDown,
-                    contentDescription = "展开",
-                    modifier = Modifier.rotate(iconRotation)
-                )
+
+                Spacer(Modifier.width(8.dp))
+
+                // 折叠指示箭头
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (expanded) "收起" else "展开",
+                            modifier = Modifier
+                                .size(20.dp)
+                                .rotate(iconRotation),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
@@ -95,30 +143,69 @@ fun ServerSelector(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(dropdownWidth)
+            modifier = Modifier
+                .width(dropdownWidth)
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(16.dp)
+                ),
+            shape = RoundedCornerShape(16.dp)
         ) {
             if (activeAccount == null) {
                 DropdownMenuItem(
-                    text = { Text("请先登录账号") },
+                    text = {
+                        Text(
+                            "请先登录账号",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
                     onClick = { expanded = false }
                 )
             } else if (servers.isEmpty()) {
                 DropdownMenuItem(
-                    text = { Text("暂无服务器，请到设置页添加") },
+                    text = {
+                        Text(
+                            "暂无服务器，请到「设置」页添加",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
                     onClick = { expanded = false }
                 )
             } else {
                 servers.forEach { server ->
                     val isSelected = activeServer?.id == server.id
                     DropdownMenuItem(
+                        leadingIcon = {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Dns,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
                         text = {
                             Text(
-                                server.serverName,
+                                text = server.serverName,
                                 maxLines = 2,
-                                color = if (isSelected)
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (isSelected) {
                                     MaterialTheme.colorScheme.primary
-                                else
+                                } else {
                                     MaterialTheme.colorScheme.onSurface
+                                }
                             )
                         },
                         onClick = {
@@ -127,8 +214,7 @@ fun ServerSelector(
                         },
                         modifier = if (isSelected) {
                             Modifier.background(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                RoundedCornerShape(8.dp)
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                             )
                         } else {
                             Modifier

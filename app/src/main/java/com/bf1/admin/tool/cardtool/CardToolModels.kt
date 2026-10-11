@@ -59,10 +59,14 @@ data class CardToolConfig(
     val minMap: Int = 1,
     val joinTimeoutMs: Long = 12_000,
     val joinPollIntervalMs: Long = 500,
-    val primeGids: List<String> = emptyList(),
+    val primeGid: String = "",
     val primeRounds: Int = 2,
-    val primeStaySeconds: Int = 5
+    val primeStaySeconds: Int = 5,
+    val debugLogs: Boolean = false
 ) {
+    /** 兼容只读列表形式的预设服列表（现收敛为至多一个暖服）。 */
+    val primeGids: List<String> get() = if (primeGid.isNotBlank()) listOf(primeGid) else emptyList()
+
     /** 目标模式名；mode 未定义时返回 null。 */
     val modeName: String? get() = MODES[mode]
 

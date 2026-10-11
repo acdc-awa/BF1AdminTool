@@ -130,4 +130,17 @@ class CardToolModelsTest {
         val settings = payload["serverSettings"] as Map<*, *>
         assertEquals(emptyMap<String, Any?>(), settings["customGameSettings"])
     }
+
+    @Test
+    fun configPrimeGidAndDebugLogsDefaults() {
+        val defaultConfig = CardToolConfig(gameId = "123", mode = 0x2)
+        assertEquals("", defaultConfig.primeGid)
+        assertEquals(emptyList<String>(), defaultConfig.primeGids)
+        assertEquals(false, defaultConfig.debugLogs)
+
+        val customConfig = CardToolConfig(gameId = "123", mode = 0x2, primeGid = "98765432101234", debugLogs = true)
+        assertEquals("98765432101234", customConfig.primeGid)
+        assertEquals(listOf("98765432101234"), customConfig.primeGids)
+        assertEquals(true, customConfig.debugLogs)
+    }
 }

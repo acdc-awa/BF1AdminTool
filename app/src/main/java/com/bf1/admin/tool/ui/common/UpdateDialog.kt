@@ -101,49 +101,86 @@ fun UpdateDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isDownloading) onDismiss() },
+        shape = RoundedCornerShape(28.dp),
         icon = {
-            if (isDownloading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-            else Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
-        },
-        title = {
-            Column {
-                Text(
-                    if (isDownloading) "正在下载..." else "发现新版本",
-                    fontWeight = FontWeight.Bold
+            if (isDownloading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 2.5.dp,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "当前 v${BuildConfig.VERSION_NAME} → ${updateInfo.latestVersion}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
                 )
             }
         },
+        title = {
+            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                Text(
+                    text = if (isDownloading) "正在下载更新..." else "发现新版本",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                ) {
+                    Text(
+                        text = "v${BuildConfig.VERSION_NAME} → ${updateInfo.latestVersion}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        },
         text = {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (isDownloading && downloadProgress > 0f) {
                     LinearProgressIndicator(
                         progress = { downloadProgress },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(Modifier.height(4.dp))
                     Text(
-                        "${(downloadProgress * 100).roundToInt()}%",
-                        style = MaterialTheme.typography.bodySmall
+                        text = "下载进度：${(downloadProgress * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else if (isDownloading && statusText != null) {
-                    Text(statusText!!, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        text = statusText!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else if (downloadError != null) {
                     Text(
-                        downloadError!!,
+                        text = downloadError!!,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                 } else if (updateInfo.releaseNotes.isNotBlank()) {
-                    if (updateInfo.releaseNotes.length > 300) {
-                        Text(updateInfo.releaseNotes.take(297) + "...", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        Text(updateInfo.releaseNotes, style = MaterialTheme.typography.bodySmall)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val notes = if (updateInfo.releaseNotes.length > 300) {
+                            updateInfo.releaseNotes.take(297) + "..."
+                        } else {
+                            updateInfo.releaseNotes
+                        }
+                        Text(
+                            text = notes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp)
+                        )
                     }
                 }
             }
@@ -152,14 +189,17 @@ fun UpdateDialog(
             if (canInApp) {
                 Button(
                     onClick = startDownload,
-                    shape = RoundedCornerShape(50),
+                    shape = RoundedCornerShape(100),
                     enabled = !isDownloading
                 ) {
-                    if (isDownloading) CircularProgressIndicator(
-                        Modifier.size(18.dp), strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    else Text("更新")
+                    if (isDownloading) {
+                        CircularProgressIndicator(
+                            Modifier.size(18.dp), strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("立即更新")
+                    }
                 }
             } else {
                 Button(
@@ -172,14 +212,14 @@ fun UpdateDialog(
                         }
                         onDismiss()
                     },
-                    shape = RoundedCornerShape(50)
+                    shape = RoundedCornerShape(100)
                 ) { Text("前往下载") }
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                shape = RoundedCornerShape(100),
                 enabled = !isDownloading
             ) { Text("稍后") }
         }
