@@ -31,6 +31,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.res.stringResource
+import com.bf1.admin.tool.R
 import com.bf1.admin.tool.cardtool.CardToolConfig
 import com.bf1.admin.tool.cardtool.MODE_PRETTY_NAMES
 import com.bf1.admin.tool.cardtool.MODES
@@ -68,11 +70,11 @@ fun CardToolScreen(
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
 
     if (accounts.isEmpty()) {
-        EmptyHint("请先在「设置」中添加并选择 EA 账号")
+        EmptyHint(stringResource(R.string.hint_card_no_account))
         return
     }
     if (servers.isEmpty()) {
-        EmptyHint("请先在「设置」中添加服务器")
+        EmptyHint(stringResource(R.string.hint_card_no_server))
         return
     }
 
@@ -149,13 +151,13 @@ fun CardToolScreen(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isRunning) "卡行动服务运行中" else "控制台待命",
+                        text = stringResource(if (isRunning) R.string.title_card_running else R.string.title_card_idle),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (isRunning) (phase ?: "执行长连接保活中...") else "配置完毕后点击下方按钮启动",
+                        text = if (isRunning) (phase ?: stringResource(R.string.msg_card_keepalive_default)) else stringResource(R.string.msg_card_idle_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -191,13 +193,13 @@ fun CardToolScreen(
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "该服务器未保存 GameID",
+                            text = stringResource(R.string.title_card_missing_gameid),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Text(
-                            text = "旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。",
+                            text = stringResource(R.string.msg_card_missing_gameid),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
                         )
@@ -242,7 +244,7 @@ fun CardToolScreen(
             ) {
                 Icon(Icons.Default.Stop, null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("停止卡行动", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.btn_stop_card), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -254,7 +256,7 @@ fun CardToolScreen(
                 ) {
                     Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("验证账号", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.btn_verify_account), fontWeight = FontWeight.SemiBold)
                 }
                 Button(
                     onClick = { showConfirm = true },
@@ -268,7 +270,7 @@ fun CardToolScreen(
                 ) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("开始卡行动", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.btn_start_card), fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -281,7 +283,7 @@ fun CardToolScreen(
             ) {
                 Icon(Icons.Default.Login, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("手动锚定当前轮换（先进服）", fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.btn_manual_anchor), fontWeight = FontWeight.Medium)
             }
         }
 
@@ -308,10 +310,10 @@ fun CardToolScreen(
                     modifier = Modifier.size(28.dp)
                 )
             },
-            title = { Text("启动卡行动", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text(stringResource(R.string.title_dialog_start_card), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Text(
-                    "即将对当前服务器开启长时连接保活与占位任务，确认立即启动？",
+                    stringResource(R.string.msg_confirm_start_card),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -323,10 +325,10 @@ fun CardToolScreen(
                         showConfirm = false
                         viewModel.startCard(currentConfig())
                     }
-                ) { Text("确认启动") }
+                ) { Text(stringResource(R.string.btn_confirm_start)) }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showConfirm = false }) { Text(stringResource(R.string.btn_cancel)) }
             }
         )
     }
@@ -414,13 +416,17 @@ private fun ConfigCard(
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "卡行动参数配置",
+                        text = stringResource(R.string.title_card_config),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "${MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "标准模式"} · $player 人",
+                        text = stringResource(
+                            R.string.label_mode_players_summary,
+                            MODE_PRETTY_NAMES[MODES[selectedMode]] ?: stringResource(R.string.default_mode_name),
+                            player
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -433,7 +439,7 @@ private fun ConfigCard(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (expanded) "收起配置" else "展开配置",
+                            contentDescription = stringResource(if (expanded) R.string.cd_collapse_config else R.string.cd_expand_config),
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -452,11 +458,11 @@ private fun ConfigCard(
                     var modeMenu by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(expanded = modeMenu, onExpandedChange = { modeMenu = it }) {
                         OutlinedTextField(
-                            value = MODE_PRETTY_NAMES[MODES[selectedMode]] ?: "选择模式",
+                            value = MODE_PRETTY_NAMES[MODES[selectedMode]] ?: stringResource(R.string.label_select_mode),
                             onValueChange = {},
                             readOnly = true,
                             enabled = enabled,
-                            label = { Text("游戏模式") },
+                            label = { Text(stringResource(R.string.label_game_mode)) },
                             shape = RoundedCornerShape(12.dp),
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeMenu) },
                             modifier = Modifier
@@ -486,7 +492,7 @@ private fun ConfigCard(
                     // 人数分段选择器
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = "服务器人数规模",
+                            text = stringResource(R.string.label_player_capacity),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -499,7 +505,7 @@ private fun ConfigCard(
                                     enabled = enabled,
                                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
                                 ) {
-                                    Text("$value 人", fontWeight = if (player == value) FontWeight.Bold else FontWeight.Normal)
+                                    Text(stringResource(R.string.label_player_count, value), fontWeight = if (player == value) FontWeight.Bold else FontWeight.Normal)
                                 }
                             }
                         }
@@ -510,7 +516,7 @@ private fun ConfigCard(
                         value = minMap,
                         onValueChange = onMinMapChange,
                         enabled = enabled,
-                        label = { Text("最少地图数量") },
+                        label = { Text(stringResource(R.string.label_min_map_count)) },
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -528,7 +534,7 @@ private fun ConfigCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(if (showAdvanced) "收起预热高级设置" else "展开预热高级设置")
+                        Text(stringResource(if (showAdvanced) R.string.btn_collapse_advanced_warmup else R.string.btn_expand_advanced_warmup))
                     }
 
                     AnimatedVisibility(visible = showAdvanced) {
@@ -537,8 +543,8 @@ private fun ConfigCard(
                                 value = primeGid,
                                 onValueChange = onPrimeGidChange,
                                 enabled = enabled,
-                                label = { Text("预设暖服 GameID（选填，单个）") },
-                                placeholder = { Text("例如：11295245190321") },
+                                label = { Text(stringResource(R.string.label_warmup_gameid)) },
+                                placeholder = { Text(stringResource(R.string.placeholder_warmup_gameid)) },
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -551,7 +557,7 @@ private fun ConfigCard(
                                     value = primeRounds,
                                     onValueChange = onPrimeRoundsChange,
                                     enabled = enabled,
-                                    label = { Text("每服进出轮数") },
+                                    label = { Text(stringResource(R.string.label_warmup_rounds)) },
                                     shape = RoundedCornerShape(12.dp),
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
@@ -560,7 +566,7 @@ private fun ConfigCard(
                                     value = primeStay,
                                     onValueChange = onPrimeStayChange,
                                     enabled = enabled,
-                                    label = { Text("停留秒数") },
+                                    label = { Text(stringResource(R.string.label_warmup_stay_seconds)) },
                                     shape = RoundedCornerShape(12.dp),
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
@@ -574,13 +580,13 @@ private fun ConfigCard(
                             ) {
                                 Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                                     Text(
-                                        text = "详细 Debug 日志",
+                                        text = stringResource(R.string.label_debug_logs),
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "默认关闭（仅展示核心阶段与进度）；开启后输出完整底层协议报文与调试信息",
+                                        text = stringResource(R.string.desc_debug_logs),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -640,7 +646,7 @@ private fun LogSection(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "控制台日志",
+                    text = stringResource(R.string.title_console_logs),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -675,14 +681,14 @@ private fun LogSection(
                                 logs.joinToString("\n") { "${timeFmt.format(Date(it.timestamp))} ${it.text}" }
                             )
                         )
-                        Toast.makeText(context, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.toast_logs_copied), Toast.LENGTH_SHORT).show()
                     },
                     enabled = logs.isNotEmpty(),
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "复制日志",
+                        contentDescription = stringResource(R.string.cd_copy_logs),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -693,7 +699,7 @@ private fun LogSection(
                 ) {
                     Icon(
                         imageVector = Icons.Default.DeleteSweep,
-                        contentDescription = "清空日志",
+                        contentDescription = stringResource(R.string.cd_clear_logs),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -723,7 +729,7 @@ private fun LogSection(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = (if (r.success) "完成: " else "失败: ") + r.message,
+                            text = stringResource(if (r.success) R.string.status_finished_prefix else R.string.status_failed_prefix) + r.message,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             color = if (r.success) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
@@ -746,7 +752,7 @@ private fun LogSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "暂无控制台运行日志",
+                        text = stringResource(R.string.empty_console_logs),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )

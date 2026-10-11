@@ -11,9 +11,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bf1.admin.tool.BuildConfig
+import com.bf1.admin.tool.R
 import com.bf1.admin.tool.util.UpdateChecker
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -57,12 +59,12 @@ fun UpdateDialog(
         isDownloading = true
         downloadError = null
         downloadProgress = 0f
-        statusText = "正在选择最快下载通道..."
+        statusText = context.getString(R.string.status_selecting_fastest_channel)
 
         coroutineScope.launch {
             try {
                 val bestUrl = UpdateChecker.selectFastestProxyUrl(updateInfo.apkAssetUrl!!)
-                statusText = "正在下载..."
+                statusText = context.getString(R.string.status_downloading)
 
                 val result = UpdateChecker.downloadAndInstall(
                     context, bestUrl
@@ -76,23 +78,23 @@ fun UpdateDialog(
                     isDownloading = false
                 }
             } catch (e: SocketTimeoutException) {
-                downloadError = "下载超时，请检查网络后重试"
+                downloadError = context.getString(R.string.error_download_timeout)
                 statusText = null
                 isDownloading = false
             } catch (e: UnknownHostException) {
-                downloadError = "网络连接失败，请检查网络后重试"
+                downloadError = context.getString(R.string.error_download_network_failed)
                 statusText = null
                 isDownloading = false
             } catch (e: IOException) {
-                downloadError = "网络连接失败，请检查网络后重试"
+                downloadError = context.getString(R.string.error_download_network_failed)
                 statusText = null
                 isDownloading = false
             } catch (e: ActivityNotFoundException) {
-                downloadError = "无法打开安装程序"
+                downloadError = context.getString(R.string.error_open_installer_failed)
                 statusText = null
                 isDownloading = false
             } catch (e: Exception) {
-                downloadError = e.message ?: "未知错误"
+                downloadError = e.message ?: context.getString(R.string.error_unknown)
                 statusText = null
                 isDownloading = false
             }
@@ -121,7 +123,7 @@ fun UpdateDialog(
         title = {
             Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
                 Text(
-                    text = if (isDownloading) "正在下载更新..." else "发现新版本",
+                    text = if (isDownloading) stringResource(R.string.title_downloading_update) else stringResource(R.string.title_new_version_found),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -131,7 +133,7 @@ fun UpdateDialog(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                 ) {
                     Text(
-                        text = "v${BuildConfig.VERSION_NAME} → ${updateInfo.latestVersion}",
+                        text = stringResource(R.string.version_upgrade_format, BuildConfig.VERSION_NAME, updateInfo.latestVersion),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -148,7 +150,7 @@ fun UpdateDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        text = "下载进度：${(downloadProgress * 100).roundToInt()}%",
+                        text = stringResource(R.string.label_download_progress, (downloadProgress * 100).roundToInt()),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -198,7 +200,7 @@ fun UpdateDialog(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                     } else {
-                        Text("立即更新")
+                        Text(stringResource(R.string.btn_update_now))
                     }
                 }
             } else {
@@ -213,7 +215,7 @@ fun UpdateDialog(
                         onDismiss()
                     },
                     shape = RoundedCornerShape(100)
-                ) { Text("前往下载") }
+                ) { Text(stringResource(R.string.btn_go_download)) }
             }
         },
         dismissButton = {
@@ -221,7 +223,7 @@ fun UpdateDialog(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(100),
                 enabled = !isDownloading
-            ) { Text("稍后") }
+            ) { Text(stringResource(R.string.btn_later)) }
         }
     )
 }

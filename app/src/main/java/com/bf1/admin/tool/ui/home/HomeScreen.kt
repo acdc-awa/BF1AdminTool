@@ -21,6 +21,8 @@ import com.bf1.admin.tool.ui.admin.AdminViewModel
 import com.bf1.admin.tool.ui.cardtool.CardToolScreen
 import com.bf1.admin.tool.ui.common.UpdateDialog
 import com.bf1.admin.tool.util.UpdateChecker
+import androidx.compose.ui.res.stringResource
+import com.bf1.admin.tool.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -105,13 +107,13 @@ fun HomeScreen(
             },
             title = {
                 Text(
-                    "账号凭证失效",
+                    stringResource(R.string.title_account_expired),
                     style = MaterialTheme.typography.headlineSmall
                 )
             },
             text = {
                 Text(
-                    "当前账号 ${expiredAccount?.name} 的 Cookie 已过期，是否立即重新登录？",
+                    stringResource(R.string.msg_account_cookie_expired, expiredAccount?.name.orEmpty()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -123,10 +125,10 @@ fun HomeScreen(
                         viewModel.clearExpiredAccount()
                         onNavigateToLogin()
                     }
-                ) { Text("重新登录") }
+                ) { Text(stringResource(R.string.btn_relogin)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.clearExpiredAccount() }) { Text("稍后") }
+                TextButton(onClick = { viewModel.clearExpiredAccount() }) { Text(stringResource(R.string.btn_later)) }
             }
         )
     }
@@ -144,7 +146,7 @@ fun HomeScreen(
                 )
             },
             title = {
-                Text("切换账号", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.title_switch_account), style = MaterialTheme.typography.headlineSmall)
             },
             shape = RoundedCornerShape(28.dp),
             text = {
@@ -217,7 +219,7 @@ fun HomeScreen(
                                     )
                                     if (isSelected) {
                                         Text(
-                                            text = "当前使用中",
+                                            text = stringResource(R.string.label_currently_active),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
@@ -233,7 +235,7 @@ fun HomeScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.DeleteOutline,
-                                        contentDescription = "移除账号",
+                                        contentDescription = stringResource(R.string.cd_remove_account),
                                         tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -254,12 +256,12 @@ fun HomeScreen(
                     ) {
                         Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("登录添加其他账号")
+                        Text(stringResource(R.string.btn_add_another_account))
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showAccountSwitcher = false }) { Text("完成") }
+                TextButton(onClick = { showAccountSwitcher = false }) { Text(stringResource(R.string.btn_done)) }
             }
         )
     }
@@ -279,10 +281,10 @@ fun HomeScreen(
                     modifier = Modifier.size(28.dp)
                 )
             },
-            title = { Text("删除账号", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text(stringResource(R.string.title_delete_account), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Text(
-                    "确定要删除账号「${pendingDeleteAccount?.name}」吗？该账号保存的凭据将被清理。",
+                    stringResource(R.string.msg_confirm_delete_account, pendingDeleteAccount?.name.orEmpty()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -299,7 +301,7 @@ fun HomeScreen(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
                     )
-                ) { Text("确认删除") }
+                ) { Text(stringResource(R.string.btn_confirm_delete)) }
             },
             dismissButton = {
                 TextButton(
@@ -307,7 +309,7 @@ fun HomeScreen(
                         showAccountDeleteDialog = false
                         pendingDeleteAccount = null
                     }
-                ) { Text("取消") }
+                ) { Text(stringResource(R.string.btn_cancel)) }
             }
         )
     }
@@ -327,10 +329,10 @@ fun HomeScreen(
                     modifier = Modifier.size(28.dp)
                 )
             },
-            title = { Text("删除服务器", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text(stringResource(R.string.title_delete_server), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Text(
-                    "确定要从列表中移除服务器「${pendingDeleteServer?.serverName}」吗？",
+                    stringResource(R.string.msg_confirm_delete_server, pendingDeleteServer?.serverName.orEmpty()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -347,7 +349,7 @@ fun HomeScreen(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
                     )
-                ) { Text("确认删除") }
+                ) { Text(stringResource(R.string.btn_confirm_delete)) }
             },
             dismissButton = {
                 TextButton(
@@ -355,7 +357,7 @@ fun HomeScreen(
                         showServerDeleteDialog = false
                         pendingDeleteServer = null
                     }
-                ) { Text("取消") }
+                ) { Text(stringResource(R.string.btn_cancel)) }
             }
         )
     }
@@ -375,10 +377,10 @@ fun HomeScreen(
                     modifier = Modifier.size(28.dp)
                 )
             },
-            title = { Text("移除管理员", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text(stringResource(R.string.title_remove_admin), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Text(
-                    "确定要从服务器管理列表中移除「${pendingDeleteAdmin?.displayName}」吗？",
+                    stringResource(R.string.msg_confirm_remove_admin, pendingDeleteAdmin?.displayName.orEmpty()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -395,7 +397,7 @@ fun HomeScreen(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
                     )
-                ) { Text("确认移除") }
+                ) { Text(stringResource(R.string.btn_confirm_remove)) }
             },
             dismissButton = {
                 TextButton(
@@ -403,7 +405,7 @@ fun HomeScreen(
                         showAdminDeleteDialog = false
                         pendingDeleteAdmin = null
                     }
-                ) { Text("取消") }
+                ) { Text(stringResource(R.string.btn_cancel)) }
             }
         )
     }
@@ -427,9 +429,9 @@ fun HomeScreen(
                 title = {
                     Text(
                         text = when (selectedTab) {
-                            0 -> "上下管理"
-                            1 -> "卡行动"
-                            else -> "设置"
+                            0 -> stringResource(R.string.nav_admin_management)
+                            1 -> stringResource(R.string.nav_card_tool)
+                            else -> stringResource(R.string.nav_settings)
                         },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
@@ -488,19 +490,19 @@ fun HomeScreen(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     icon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = null) },
-                    label = { Text("上下管理") }
+                    label = { Text(stringResource(R.string.nav_admin_management)) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     icon = { Icon(Icons.Default.SportsEsports, contentDescription = null) },
-                    label = { Text("卡行动") }
+                    label = { Text(stringResource(R.string.nav_card_tool)) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("设置") }
+                    label = { Text(stringResource(R.string.nav_settings)) }
                 )
             }
         }

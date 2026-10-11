@@ -1,4 +1,174 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 基础应用信息 -->
     <string name="app_name">BF1管理工具</string>
+    <string name="app_full_name">战地1 服务器管理工具</string>
+
+    <!-- 通用按钮与交互 -->
+    <string name="btn_confirm">确定</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_done">完成</string>
+    <string name="btn_close">关闭</string>
+    <string name="btn_retry">重试</string>
+    <string name="btn_retry_attempt">重新尝试</string>
+    <string name="btn_reload">重新加载</string>
+    <string name="btn_relogin">重新登录</string>
+    <string name="btn_later">稍后</string>
+    <string name="btn_add">添加</string>
+    <string name="btn_save_and_verify">保存并验证</string>
+    <string name="btn_update_now">立即更新</string>
+    <string name="btn_go_download">前往下载</string>
+    <string name="btn_recheck">重新检查</string>
+    <string name="btn_checking_update">正在检查更新...</string>
+    <string name="btn_check_new_version">检查新版本</string>
+
+    <!-- 通用无障碍描述 (ContentDescription) -->
+    <string name="cd_collapse">收起</string>
+    <string name="cd_expand">展开</string>
+    <string name="cd_back">返回</string>
+    <string name="cd_refresh">刷新</string>
+    <string name="cd_copy">复制</string>
+    <string name="cd_delete">删除</string>
+    <string name="cd_clear_input">清空输入</string>
+
+    <!-- 底部导航栏 -->
+    <string name="nav_admin_management">上下管理</string>
+    <string name="nav_card_tool">卡行动</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- 顶栏与全局弹窗 (HomeScreen) -->
+    <string name="title_account_expired">账号凭证失效</string>
+    <string name="msg_account_cookie_expired">当前账号 %1$s 的 Cookie 已过期，是否立即重新登录？</string>
+    <string name="title_switch_account">切换账号</string>
+    <string name="label_currently_active">当前使用中</string>
+    <string name="cd_remove_account">移除账号</string>
+    <string name="btn_add_another_account">登录添加其他账号</string>
+    <string name="title_delete_account">删除账号</string>
+    <string name="msg_confirm_delete_account">确定要删除账号「%1$s」吗？该账号保存的凭据将被清理。</string>
+    <string name="btn_confirm_delete">确认删除</string>
+    <string name="title_delete_server">删除服务器</string>
+    <string name="msg_confirm_delete_server">确定要从列表中移除服务器「%1$s」吗？</string>
+    <string name="title_remove_admin">移除管理员</string>
+    <string name="msg_confirm_remove_admin">确定要从服务器管理列表中移除「%1$s」吗？</string>
+    <string name="btn_confirm_remove">确认移除</string>
+
+    <!-- 顶部服务器选择器 (ServerSelector) -->
+    <string name="label_current_server">当前服务器</string>
+    <string name="label_no_server_selected">未选择服务器</string>
+    <string name="hint_login_first">请先登录账号</string>
+    <string name="hint_no_servers_go_settings">暂无服务器，请到「设置」页添加</string>
+
+    <!-- 上下管理模块 (AdminManagementTab) -->
+    <string name="title_admin_list">管理员列表</string>
+    <string name="status_syncing_admin_list">正在同步管理员列表</string>
+    <string name="status_connecting_gateway">正在刷新...</string>
+    <string name="error_network_connection">网络连接异常</string>
+    <string name="error_gateway_connection_failed">无法连接至 EA 网关，请检查网络连接。</string>
+    <string name="error_credentials_expired_title">账号凭证已失效</string>
+    <string name="error_credentials_expired_desc">EA 账号登录凭证已过期，请重新登录账号以恢复管理员管理权限。</string>
+    <string name="title_no_server_selected">未选择服务器</string>
+    <string name="msg_no_server_selected_guide">请在上方切换选择要管理的服务器，或前往「设置」添加服务器。</string>
+    <string name="error_load_admin_failed">加载管理员失败</string>
+    <string name="empty_no_matching_admin">没有找到匹配的管理员</string>
+    <string name="empty_no_admin_in_server">当前服务器暂无管理员</string>
+    <string name="label_pid_prefix">PID: %1$s</string>
+    <string name="toast_copied_pid">已复制 PID: %1$s</string>
+    <string name="cd_copy_pid">复制 PID</string>
+    <string name="cd_remove_admin">移除管理员</string>
+    <string name="placeholder_search_or_input_player">搜索或输入玩家名称 / PID</string>
+    <string name="btn_add_admin">添加管理</string>
+    <string name="btn_remove_admin">移除管理</string>
+
+    <!-- 卡服模块 (CardToolScreen) -->
+    <string name="hint_card_no_account">请先在「设置」中添加并选择 EA 账号</string>
+    <string name="hint_card_no_server">请先在「设置」中添加服务器</string>
+    <string name="title_card_running">卡行动服务运行中</string>
+    <string name="title_card_idle">控制台待命</string>
+    <string name="msg_card_keepalive_default">执行长连接保活中...</string>
+    <string name="msg_card_idle_hint">配置完毕后点击下方按钮启动</string>
+    <string name="title_card_missing_gameid">该服务器未保存 GameID</string>
+    <string name="msg_card_missing_gameid">旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。</string>
+    <string name="btn_stop_card">停止卡行动</string>
+    <string name="btn_verify_account">验证账号</string>
+    <string name="btn_start_card">开始卡行动</string>
+    <string name="btn_manual_anchor">手动锚定当前轮换（先进服）</string>
+    <string name="title_dialog_start_card">启动卡行动</string>
+    <string name="msg_confirm_start_card">即将对当前服务器开启长时连接保活与占位任务，确认立即启动？</string>
+    <string name="btn_confirm_start">确认启动</string>
+    <string name="title_card_config">卡行动参数配置</string>
+    <string name="default_mode_name">标准模式</string>
+    <string name="label_mode_players_summary">%1$s · %2$d 人</string>
+    <string name="cd_collapse_config">收起配置</string>
+    <string name="cd_expand_config">展开配置</string>
+    <string name="label_select_mode">选择模式</string>
+    <string name="label_game_mode">游戏模式</string>
+    <string name="label_player_capacity">服务器人数规模</string>
+    <string name="label_player_count">%1$d 人</string>
+    <string name="label_min_map_count">最少地图数量</string>
+    <string name="btn_collapse_advanced_warmup">收起预热高级设置</string>
+    <string name="btn_expand_advanced_warmup">展开预热高级设置</string>
+    <string name="label_warmup_gameid">预设图池所在服务器</string>
+    <string name="placeholder_warmup_gameid">例如：11295245190321</string>
+    <string name="label_warmup_rounds">每服进出轮数</string>
+    <string name="label_warmup_stay_seconds">停留秒数</string>
+    <string name="label_debug_logs">详细 Debug 日志</string>
+    <string name="desc_debug_logs">默认关闭，开启后输出完整调试信息</string>
+    <string name="title_console_logs">日志</string>
+    <string name="toast_logs_copied">日志已复制到剪贴板</string>
+    <string name="cd_copy_logs">复制日志</string>
+    <string name="cd_clear_logs">清空日志</string>
+    <string name="status_finished_prefix">完成: </string>
+    <string name="status_failed_prefix">失败: </string>
+    <string name="empty_console_logs">暂无运行日志</string>
+
+    <!-- 设置模块 (SettingsTab) -->
+    <string name="title_ea_account_center">账号</string>
+    <string name="badge_authorized">已登录</string>
+    <string name="label_account_pid">PID: %1$s</string>
+    <string name="btn_credential_details">查看Cookies</string>
+    <string name="btn_switch_account">更换账号</string>
+    <string name="msg_no_ea_account_logged_in">暂未登录 EA 账号，请先添加登录凭证以使用服务器管理功能。</string>
+    <string name="btn_login_add_ea_account">登录添加 EA 账号</string>
+    <string name="title_server_list_count">服务器列表 (%1$d)</string>
+    <string name="cd_add_server">添加服务器</string>
+    <string name="msg_login_ea_first_to_load_servers">请先登录 EA 账号以载入和添加服务器</string>
+    <string name="msg_empty_server_list_hint">暂未添加任何服务器，点击右上角 + 添加</string>
+    <string name="label_server_gid">GID: %1$s</string>
+    <string name="title_about_tool">关于工具</string>
+    <string name="label_current_version">当前版本：v%1$s (Build %2$d)</string>
+    <string name="label_new_version_found">发现新版本: %1$s</string>
+    <string name="snackbar_already_latest_version">已是最新版本</string>
+    <string name="snackbar_check_failed">检查失败: %1$s</string>
+    <string name="snackbar_current_already_latest">当前已是最新版本</string>
+    <string name="snackbar_check_update_failed">检查更新失败: %1$s</string>
+    <string name="title_quick_operation_guide">快捷操作说明</string>
+    <string name="content_quick_operation_guide">• 确保已在设置中选择 EA 账号并选定当前目标服务器。\n• 管理员列表输入框支持玩家名过滤或直接长按/点击删除。\n• 以 # 号开头输入可直接按 personaId (PID) 添加/移除管理员。</string>
+    <string name="title_cookie_credentials_detail">Cookie 凭证详情</string>
+    <string name="label_remid_credential">remid 凭证</string>
+    <string name="label_sid_credential">sid 凭证</string>
+    <string name="title_dialog_add_server">添加服务器</string>
+    <string name="msg_enter_gameid_hint">请输入 GameID：</string>
+    <string name="label_gameid_input">GameID</string>
+    <string name="msg_looking_up_server">正在查询服务器信息...</string>
+    <string name="msg_server_lookup_result">服务器：%1$s</string>
+    <string name="label_server_id_result">ServerID：%1$s</string>
+
+    <!-- 版本更新弹窗 (UpdateDialog) -->
+    <string name="title_downloading_update">正在下载更新...</string>
+    <string name="title_new_version_found">发现新版本</string>
+    <string name="version_upgrade_format">v%1$s → %2$s</string>
+    <string name="label_download_progress">下载进度：%1$d%%</string>
+    <string name="status_selecting_fastest_channel">正在选择下载通道...</string>
+    <string name="status_downloading">正在下载...</string>
+    <string name="error_download_timeout">下载超时，请检查网络后重试</string>
+    <string name="error_download_network_failed">网络连接失败，请检查网络后重试</string>
+    <string name="error_open_installer_failed">无法打开安装程序</string>
+    <string name="error_unknown">未知错误</string>
+
+    <!-- WebView 登录界面 (WebViewLoginScreen) -->
+    <string name="title_ea_account_login">EA 账号登录</string>
+    <string name="msg_complete_2fa_hint">请完成双因素验证，验证后将自动继续</string>
+    <string name="error_webview_creation_failed">WebView 创建失败: %1$s</string>
+    <string name="status_verifying_session">正在获取并验证 Session...</string>
+    <string name="status_loading">加载中...</string>
 </resources>

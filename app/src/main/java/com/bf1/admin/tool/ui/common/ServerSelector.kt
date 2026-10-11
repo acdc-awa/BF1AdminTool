@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.bf1.admin.tool.R
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 
@@ -99,12 +101,12 @@ fun ServerSelector(
                 // 标题与服务器名称
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "当前服务器",
+                        text = stringResource(R.string.label_current_server),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = activeServer?.serverName ?: "未选择服务器",
+                        text = activeServer?.serverName ?: stringResource(R.string.label_no_server_selected),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -128,7 +130,7 @@ fun ServerSelector(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = if (expanded) "收起" else "展开",
+                            contentDescription = stringResource(if (expanded) R.string.cd_collapse else R.string.cd_expand),
                             modifier = Modifier
                                 .size(20.dp)
                                 .rotate(iconRotation),
@@ -155,7 +157,7 @@ fun ServerSelector(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            "请先登录账号",
+                            stringResource(R.string.hint_login_first),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -166,7 +168,7 @@ fun ServerSelector(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            "暂无服务器，请到「设置」页添加",
+                            stringResource(R.string.hint_no_servers_go_settings),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

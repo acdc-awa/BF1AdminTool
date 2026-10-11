@@ -16,9 +16,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bf1.admin.tool.R
 import com.bf1.admin.tool.util.CookieHelper
 
 /**
@@ -100,14 +102,14 @@ fun WebViewLoginScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "EA 账号登录",
+                        text = stringResource(R.string.title_ea_account_login),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -246,7 +248,7 @@ fun WebViewLoginScreen(
                                     if (matched2FA) {
                                         if (!showingOTCMessage) {
                                             showingOTCMessage = true
-                                            errorMsg = "请完成双因素验证，验证后将自动继续"
+                                            errorMsg = context.getString(R.string.msg_complete_2fa_hint)
                                             Log.d(TAG, "[WebView] ⚑ OTC/2FA page detected — showing prompt")
                                         }
                                     }
@@ -297,7 +299,7 @@ fun WebViewLoginScreen(
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "[WebView] Failed to create WebView", e)
-                        errorMsg = "WebView 创建失败: ${e.message}"
+                        errorMsg = context.getString(R.string.error_webview_creation_failed, e.message ?: "")
                         WebView(context)
                     }
                 }
@@ -314,7 +316,7 @@ fun WebViewLoginScreen(
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (isLoading) "正在获取并验证 Session..." else "加载中...",
+                            text = if (isLoading) stringResource(R.string.status_verifying_session) else stringResource(R.string.status_loading),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

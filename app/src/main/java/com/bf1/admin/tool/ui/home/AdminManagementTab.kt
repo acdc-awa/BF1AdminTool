@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.bf1.admin.tool.R
 import com.bf1.admin.tool.data.remote.EAApiService
 import com.bf1.admin.tool.ui.admin.AdminViewModel
 import com.bf1.admin.tool.ui.common.ServerSelector
@@ -106,7 +108,7 @@ fun AdminManagementTab(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "管理员列表",
+                    text = stringResource(R.string.title_admin_list),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -139,7 +141,7 @@ fun AdminManagementTab(
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "刷新",
+                    contentDescription = stringResource(R.string.cd_refresh),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
@@ -182,14 +184,14 @@ fun AdminManagementTab(
                                 )
                                 Spacer(Modifier.height(16.dp))
                                 Text(
-                                    text = "正在同步管理员列表",
+                                    text = stringResource(R.string.status_syncing_admin_list),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "正在连接 EA 网关验证凭据并获取数据...",
+                                    text = stringResource(R.string.status_connecting_gateway),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -230,14 +232,14 @@ fun AdminManagementTab(
                                 }
                                 Spacer(Modifier.height(14.dp))
                                 Text(
-                                    text = "网络连接异常",
+                                    text = stringResource(R.string.error_network_connection),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = state.message.ifBlank { "无法连接至 EA 战地1 服务端网关，请检查网络连接。" },
+                                    text = state.message.ifBlank { stringResource(R.string.error_gateway_connection_failed) },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -249,7 +251,7 @@ fun AdminManagementTab(
                                 ) {
                                     Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("重新加载")
+                                    Text(stringResource(R.string.btn_reload))
                                 }
                             }
                         }
@@ -287,14 +289,14 @@ fun AdminManagementTab(
                                 }
                                 Spacer(Modifier.height(14.dp))
                                 Text(
-                                    text = "账号凭证已失效",
+                                    text = stringResource(R.string.error_credentials_expired_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "EA 账号登录凭证已过期，请重新登录账号以恢复管理员管理权限。",
+                                    text = stringResource(R.string.error_credentials_expired_desc),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -305,7 +307,7 @@ fun AdminManagementTab(
                                         onClick = onRefreshAdminList,
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("重试")
+                                        Text(stringResource(R.string.btn_retry))
                                     }
                                     Button(
                                         onClick = onNavigateToLogin,
@@ -313,7 +315,7 @@ fun AdminManagementTab(
                                     ) {
                                         Icon(Icons.Default.Login, null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("重新登录")
+                                        Text(stringResource(R.string.btn_relogin))
                                     }
                                 }
                             }
@@ -352,14 +354,14 @@ fun AdminManagementTab(
                                 }
                                 Spacer(Modifier.height(14.dp))
                                 Text(
-                                    text = "未选择服务器",
+                                    text = stringResource(R.string.title_no_server_selected),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "请在上方切换选择要管理的服务器，或前往「设置」添加服务器。",
+                                    text = stringResource(R.string.msg_no_server_selected_guide),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -401,7 +403,7 @@ fun AdminManagementTab(
                                 }
                                 Spacer(Modifier.height(14.dp))
                                 Text(
-                                    text = "加载管理员失败",
+                                    text = stringResource(R.string.error_load_admin_failed),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -420,7 +422,7 @@ fun AdminManagementTab(
                                 ) {
                                     Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("重新尝试")
+                                    Text(stringResource(R.string.btn_retry_attempt))
                                 }
                             }
                         }
@@ -450,7 +452,7 @@ fun AdminManagementTab(
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    text = if (playerInput.isNotBlank()) "没有找到匹配的管理员" else "当前服务器暂无管理员",
+                                    text = stringResource(if (playerInput.isNotBlank()) R.string.empty_no_matching_admin else R.string.empty_no_admin_in_server),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -562,7 +564,7 @@ private fun AdminCard(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
                     Text(
-                        text = "PID: ${admin.personaId}",
+                        text = stringResource(R.string.label_pid_prefix, admin.personaId),
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -577,13 +579,13 @@ private fun AdminCard(
             IconButton(
                 onClick = {
                     clipboardManager.setText(AnnotatedString(admin.personaId.toString()))
-                    Toast.makeText(context, "已复制 PID: ${admin.personaId}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.toast_copied_pid, admin.personaId), Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.size(36.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "复制 PID",
+                    contentDescription = stringResource(R.string.cd_copy_pid),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
@@ -596,7 +598,7 @@ private fun AdminCard(
             ) {
                 Icon(
                     imageVector = Icons.Default.PersonRemove,
-                    contentDescription = "移除管理员",
+                    contentDescription = stringResource(R.string.cd_remove_admin),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(18.dp)
                 )
@@ -637,7 +639,7 @@ private fun AdminActionBar(
                 onValueChange = { onInputChange(it.replace("\n", "")) },
                 placeholder = {
                     Text(
-                        "搜索或输入玩家名称 / PID",
+                        stringResource(R.string.placeholder_search_or_input_player),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 },
@@ -657,7 +659,7 @@ private fun AdminActionBar(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Clear,
-                                contentDescription = "清空输入",
+                                contentDescription = stringResource(R.string.cd_clear_input),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -694,7 +696,7 @@ private fun AdminActionBar(
                     } else {
                         Icon(Icons.Default.PersonAdd, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("添加管理", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.btn_add_admin), fontWeight = FontWeight.SemiBold)
                     }
                 }
 
@@ -716,7 +718,7 @@ private fun AdminActionBar(
                     } else {
                         Icon(Icons.Default.PersonRemove, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("移除管理", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.btn_remove_admin), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

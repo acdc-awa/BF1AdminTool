@@ -17,7 +17,10 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.bf1.admin.tool.R
 import com.bf1.admin.tool.BuildConfig
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
@@ -52,6 +55,7 @@ fun SettingsTab(
     onAddServer: (String, () -> Unit) -> Unit,
     snackbarHostState: SnackbarHostState
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     // 凭证编辑状态
@@ -133,7 +137,7 @@ fun SettingsTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "EA 账号中心",
+                        text = stringResource(R.string.title_ea_account_center),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -144,7 +148,7 @@ fun SettingsTab(
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                text = "已授权",
+                                text = stringResource(R.string.badge_authorized),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -186,7 +190,7 @@ fun SettingsTab(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh
                             ) {
                                 Text(
-                                    text = "PID: ${activeAccount.personaId}",
+                                    text = stringResource(R.string.label_account_pid, activeAccount.personaId),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -209,7 +213,7 @@ fun SettingsTab(
                         ) {
                             Icon(Icons.Default.Key, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("凭证详情", fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.btn_credential_details), fontWeight = FontWeight.SemiBold)
                         }
                         OutlinedButton(
                             onClick = { onShowAccountSwitcher(true) },
@@ -218,12 +222,12 @@ fun SettingsTab(
                         ) {
                             Icon(Icons.Default.SwapHoriz, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("更换账号", fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.btn_switch_account), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 } else {
                     Text(
-                        text = "暂未登录 EA 账号，请先添加登录凭证以使用服务器管理功能。",
+                        text = stringResource(R.string.msg_no_ea_account_logged_in),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -235,7 +239,7 @@ fun SettingsTab(
                     ) {
                         Icon(Icons.Default.Login, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("登录添加 EA 账号", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.btn_login_add_ea_account), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -259,7 +263,7 @@ fun SettingsTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "服务器列表 (${servers.size})",
+                        text = stringResource(R.string.title_server_list_count, servers.size),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -271,7 +275,7 @@ fun SettingsTab(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "添加服务器",
+                                contentDescription = stringResource(R.string.cd_add_server),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -282,7 +286,7 @@ fun SettingsTab(
 
                 if (activeAccount == null) {
                     Text(
-                        text = "请先登录 EA 账号以载入和添加服务器",
+                        text = stringResource(R.string.msg_login_ea_first_to_load_servers),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -294,7 +298,7 @@ fun SettingsTab(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "暂未添加任何服务器，点击右上角 ＋ 添加",
+                            text = stringResource(R.string.msg_empty_server_list_hint),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -329,7 +333,7 @@ fun SettingsTab(
                                         )
                                         if (!server.gameId.isNullOrEmpty()) {
                                             Text(
-                                                text = "GID: ${server.gameId}",
+                                                text = stringResource(R.string.label_server_gid, server.gameId.orEmpty()),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = FontFamily.Monospace,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -345,7 +349,7 @@ fun SettingsTab(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.DeleteOutline,
-                                            contentDescription = "删除",
+                                            contentDescription = stringResource(R.string.cd_delete),
                                             tint = MaterialTheme.colorScheme.error,
                                             modifier = Modifier.size(18.dp)
                                         )
@@ -376,7 +380,7 @@ fun SettingsTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "关于工具",
+                        text = stringResource(R.string.title_about_tool),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -390,13 +394,13 @@ fun SettingsTab(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "战地1 服务器管理工具",
+                    text = stringResource(R.string.app_full_name),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "当前版本：v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
+                    text = stringResource(R.string.label_current_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -411,7 +415,7 @@ fun SettingsTab(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "发现新版本: ${info.latestVersion}",
+                            text = stringResource(R.string.label_new_version_found, info.latestVersion),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -430,7 +434,7 @@ fun SettingsTab(
                         ) {
                             Icon(Icons.Default.Download, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("立即更新", fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.btn_update_now), fontWeight = FontWeight.SemiBold)
                         }
                         OutlinedButton(
                             onClick = {
@@ -440,12 +444,12 @@ fun SettingsTab(
                                         val result = withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }
                                         updateCheckResult = result
                                         if (result == null) {
-                                            snackbarHostState.showSnackbar("已是最新版本")
+                                            snackbarHostState.showSnackbar(context.getString(R.string.snackbar_already_latest_version))
                                         } else {
                                             showUpdateDialog = true
                                         }
                                     } catch (e: Exception) {
-                                        snackbarHostState.showSnackbar("检查失败: ${e.message}")
+                                        snackbarHostState.showSnackbar(context.getString(R.string.snackbar_check_failed, e.message.orEmpty()))
                                     } finally {
                                         isCheckingUpdate = false
                                     }
@@ -458,7 +462,7 @@ fun SettingsTab(
                             if (isCheckingUpdate) {
                                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                             } else {
-                                Text("重新检查", fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.btn_recheck), fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -471,12 +475,12 @@ fun SettingsTab(
                                     val result = withContext(Dispatchers.IO) { UpdateChecker.checkForUpdate() }
                                     updateCheckResult = result
                                     if (result == null) {
-                                        snackbarHostState.showSnackbar("当前已是最新版本")
+                                        snackbarHostState.showSnackbar(context.getString(R.string.snackbar_current_already_latest))
                                     } else {
                                         showUpdateDialog = true
                                     }
                                 } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("检查更新失败: ${e.message}")
+                                    snackbarHostState.showSnackbar(context.getString(R.string.snackbar_check_update_failed, e.message.orEmpty()))
                                 } finally {
                                     isCheckingUpdate = false
                                 }
@@ -493,11 +497,11 @@ fun SettingsTab(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("正在检查更新...")
+                            Text(stringResource(R.string.btn_checking_update))
                         } else {
                             Icon(Icons.Default.SystemUpdate, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("检查新版本", fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.btn_check_new_version), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -524,14 +528,14 @@ fun SettingsTab(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "快捷操作说明",
+                        text = stringResource(R.string.title_quick_operation_guide),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "• 确保已在设置中选择 EA 账号并选定当前目标服务器。\n• 管理员列表输入框支持玩家名过滤或直接长按/点击删除。\n• 以 # 号开头输入可直接按 personaId (PID) 添加/移除管理员。",
+                    text = stringResource(R.string.content_quick_operation_guide),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -570,7 +574,7 @@ private fun AccountDetailDialog(
         },
         title = {
             Text(
-                text = "Cookie 凭证详情",
+                text = stringResource(R.string.title_cookie_credentials_detail),
                 style = MaterialTheme.typography.headlineSmall
             )
         },
@@ -585,7 +589,7 @@ private fun AccountDetailDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "remid 凭证",
+                            text = stringResource(R.string.label_remid_credential),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -594,7 +598,7 @@ private fun AccountDetailDialog(
                             onClick = { clipboardManager.setText(AnnotatedString(remid)) },
                             modifier = Modifier.size(28.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, "复制", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ContentCopy, stringResource(R.string.cd_copy), modifier = Modifier.size(16.dp))
                         }
                     }
                     Spacer(Modifier.height(4.dp))
@@ -617,7 +621,7 @@ private fun AccountDetailDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "sid 凭证",
+                            text = stringResource(R.string.label_sid_credential),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -626,7 +630,7 @@ private fun AccountDetailDialog(
                             onClick = { clipboardManager.setText(AnnotatedString(sid)) },
                             modifier = Modifier.size(28.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, "复制", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ContentCopy, stringResource(R.string.cd_copy), modifier = Modifier.size(16.dp))
                         }
                     }
                     Spacer(Modifier.height(4.dp))
@@ -654,7 +658,7 @@ private fun AccountDetailDialog(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Text("保存并验证")
+                    Text(stringResource(R.string.btn_save_and_verify))
                 }
             }
         },
@@ -663,7 +667,7 @@ private fun AccountDetailDialog(
                 onClick = onDismiss,
                 enabled = !isLoading,
                 shape = RoundedCornerShape(100)
-            ) { Text("关闭") }
+            ) { Text(stringResource(R.string.btn_close)) }
         }
     )
 }
@@ -697,12 +701,12 @@ private fun AddServerDialog(
                 modifier = Modifier.size(28.dp)
             )
         },
-        title = { Text("添加服务器", style = MaterialTheme.typography.headlineSmall) },
+        title = { Text(stringResource(R.string.title_dialog_add_server), style = MaterialTheme.typography.headlineSmall) },
         shape = RoundedCornerShape(28.dp),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "请输入 14 位 GameID（可在 GameTools 或服务器分享链接中获取）：",
+                    text = stringResource(R.string.msg_enter_gameid_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -712,7 +716,7 @@ private fun AddServerDialog(
                     onValueChange = {
                         if (it.length <= 14) gameId = it.filter { ch -> ch.isDigit() }
                     },
-                    label = { Text("GameID (14位纯数字)") },
+                    label = { Text(stringResource(R.string.label_gameid_input)) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -730,7 +734,7 @@ private fun AddServerDialog(
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    text = "正在查询服务器信息...",
+                                    text = stringResource(R.string.msg_looking_up_server),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall
                                 )
@@ -748,7 +752,7 @@ private fun AddServerDialog(
                             ) {
                                 Column(Modifier.padding(14.dp)) {
                                     Text(
-                                        text = "服务器：$lookupServerName",
+                                        text = stringResource(R.string.msg_server_lookup_result, lookupServerName.orEmpty()),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -757,7 +761,7 @@ private fun AddServerDialog(
                                     if (lookupServerId != null) {
                                         Spacer(Modifier.height(4.dp))
                                         Text(
-                                            text = "ServerID：$lookupServerId",
+                                            text = stringResource(R.string.label_server_id_result, lookupServerId.orEmpty()),
                                             style = MaterialTheme.typography.labelSmall,
                                             fontFamily = FontFamily.Monospace,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
@@ -789,7 +793,7 @@ private fun AddServerDialog(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Text("添加")
+                    Text(stringResource(R.string.btn_add))
                 }
             }
         },
@@ -798,7 +802,7 @@ private fun AddServerDialog(
                 onClick = onDismiss,
                 enabled = !isLoading,
                 shape = RoundedCornerShape(100)
-            ) { Text("取消") }
+            ) { Text(stringResource(R.string.btn_cancel)) }
         }
     )
 }
