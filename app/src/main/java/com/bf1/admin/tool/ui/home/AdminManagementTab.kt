@@ -103,54 +103,39 @@ fun AdminManagementTab(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.title_admin_list),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.padding(vertical = 2.dp)
-                ) {
-                    val countText = if (filteredAdminList.size != adminList.size) {
-                        "${filteredAdminList.size} / ${adminList.size}"
-                    } else {
-                        "${adminList.size}"
-                    }
-                    Text(
-                        text = countText,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            IconButton(
-                onClick = onRefreshAdminList,
-                enabled = !isRefreshingAdminList,
-                modifier = Modifier.size(32.dp)
+            Text(
+                text = stringResource(R.string.title_admin_list),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.width(8.dp))
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.padding(vertical = 2.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = stringResource(R.string.cd_refresh),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                val countText = if (filteredAdminList.size != adminList.size) {
+                    "${filteredAdminList.size} / ${adminList.size}"
+                } else {
+                    "${adminList.size}"
+                }
+                Text(
+                    text = countText,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }
         }
 
         // ═══════ 管理员列表（可滚动 + 下拉刷新）═══════
+        val showPullRefreshIndicator = isRefreshingAdminList && uiState !is AdminViewModel.AdminListUiState.Loading
         val pullRefreshState = rememberPullRefreshState(
-            refreshing = isRefreshingAdminList,
+            refreshing = showPullRefreshIndicator,
             onRefresh = onRefreshAdminList
         )
 
@@ -158,7 +143,10 @@ fun AdminManagementTab(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .pullRefresh(pullRefreshState)
+                .pullRefresh(
+                    state = pullRefreshState,
+                    enabled = uiState !is AdminViewModel.AdminListUiState.Loading
+                )
         ) {
             when {
                 uiState is AdminViewModel.AdminListUiState.Loading -> {
@@ -477,7 +465,7 @@ fun AdminManagementTab(
             }
 
             PullRefreshIndicator(
-                refreshing = isRefreshingAdminList,
+                refreshing = showPullRefreshIndicator,
                 state = pullRefreshState,
                 modifier = Modifier.align(Alignment.TopCenter),
                 backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh,

@@ -91,7 +91,7 @@
     <string name="btn_stop_card">停止卡行动</string>
     <string name="btn_verify_account">验证账号</string>
     <string name="btn_start_card">开始卡行动</string>
-    <string name="btn_manual_anchor">手动锚定当前轮换（先进服）</string>
+    <string name="btn_manual_anchor">手动锚定（需要有玩家在服务器里面）</string>
     <string name="title_dialog_start_card">启动卡行动</string>
     <string name="msg_confirm_start_card">即将对当前服务器开启长时连接保活与占位任务，确认立即启动？</string>
     <string name="btn_confirm_start">确认启动</string>
@@ -107,8 +107,7 @@
     <string name="label_min_map_count">最少地图数量</string>
     <string name="btn_collapse_advanced_warmup">收起预热高级设置</string>
     <string name="btn_expand_advanced_warmup">展开预热高级设置</string>
-    <string name="label_warmup_gameid">预设图池所在服务器</string>
-    <string name="placeholder_warmup_gameid">例如：11295245190321</string>
+    <string name="label_warmup_gameid">预设图池所在服务器GameID</string>
     <string name="label_warmup_rounds">每服进出轮数</string>
     <string name="label_warmup_stay_seconds">停留秒数</string>
     <string name="label_debug_logs">详细 Debug 日志</string>

@@ -119,58 +119,6 @@ fun CardToolScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // 运行状态横幅
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = if (isRunning) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-            } else {
-                MaterialTheme.colorScheme.surfaceContainer
-            },
-            border = BorderStroke(
-                width = 1.dp,
-                color = if (isRunning) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                }
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                    modifier = Modifier.size(10.dp)
-                ) {}
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(if (isRunning) R.string.title_card_running else R.string.title_card_idle),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (isRunning) (phase ?: stringResource(R.string.msg_card_keepalive_default)) else stringResource(R.string.msg_card_idle_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (isRunning) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
 
         // 未保存 GameID 的警告卡片
         if (!gameIdValid) {
@@ -544,7 +492,6 @@ private fun ConfigCard(
                                 onValueChange = onPrimeGidChange,
                                 enabled = enabled,
                                 label = { Text(stringResource(R.string.label_warmup_gameid)) },
-                                placeholder = { Text(stringResource(R.string.placeholder_warmup_gameid)) },
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -625,55 +572,57 @@ private fun LogSection(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = if (isRunning) {
+            MaterialTheme.colorScheme.surfaceContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            color = if (isRunning) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            }
         ),
-        tonalElevation = 2.dp
+        tonalElevation = if (isRunning) 3.dp else 2.dp
     ) {
         Column(Modifier.padding(14.dp)) {
-            // 工具栏
+            // 顶部紧凑状态信息条（指示灯 + 状态文案与阶段 + 快捷操作）
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = Icons.Default.Terminal,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.title_console_logs),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (phase != null) {
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                    modifier = Modifier.size(10.dp)
+                ) {}
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = phase,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            text = stringResource(if (isRunning) R.string.title_card_running else R.string.title_card_idle),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        if (isRunning) {
+                            Spacer(Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
-                }
-                Spacer(Modifier.weight(1f))
-                if (isRunning) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
+                    Text(
+                        text = if (isRunning) (phase ?: stringResource(R.string.msg_card_keepalive_default)) else stringResource(R.string.msg_card_idle_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(Modifier.width(8.dp))
                 }
+
                 IconButton(
                     onClick = {
                         clipboard.setText(
@@ -689,6 +638,7 @@ private fun LogSection(
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
                         contentDescription = stringResource(R.string.cd_copy_logs),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -700,6 +650,7 @@ private fun LogSection(
                     Icon(
                         imageVector = Icons.Default.DeleteSweep,
                         contentDescription = stringResource(R.string.cd_clear_logs),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
