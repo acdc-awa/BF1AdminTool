@@ -1,4 +1,4 @@
-﻿package com.bf1.admin.tool.ui.cardtool
+package com.bf1.admin.tool.ui.cardtool
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -43,7 +43,7 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val activeAccount: StateFlow<AccountEntity?> = accounts
-        .map { list -> list.firstOrNull { it.isActive } }
+        .map { list -> list.firstOrNull { it.isActive } ?: list.firstOrNull() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val servers: StateFlow<List<ServerEntity>> = activeAccount.filterNotNull()

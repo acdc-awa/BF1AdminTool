@@ -438,19 +438,19 @@ fun HomeScreen(
                     )
                 },
                 actions = {
-                    if (activeAccount != null) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier
-                                .padding(end = 12.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .clickable { showAccountSwitcher = true }
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable { showAccountSwitcher = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            if (activeAccount != null) {
                                 Surface(
                                     shape = CircleShape,
                                     color = MaterialTheme.colorScheme.primary,
@@ -470,6 +470,20 @@ fun HomeScreen(
                                     text = activeAccount?.name ?: "",
                                     style = MaterialTheme.typography.labelMedium,
                                     maxLines = 1
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.btn_select_account),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }

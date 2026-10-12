@@ -220,13 +220,13 @@ fun SettingsTab(
                     )
                     Spacer(Modifier.height(14.dp))
                     Button(
-                        onClick = onNavigateToLogin,
+                        onClick = { onShowAccountSwitcher(true) },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Login, null, Modifier.size(18.dp))
+                        Icon(Icons.Default.AccountCircle, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.btn_login_add_ea_account), fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.btn_select_account), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

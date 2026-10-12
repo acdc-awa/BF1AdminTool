@@ -43,6 +43,7 @@
     <string name="label_currently_active">当前使用中</string>
     <string name="cd_remove_account">移除账号</string>
     <string name="btn_add_another_account">登录添加其他账号</string>
+    <string name="btn_select_account">选择账号</string>
     <string name="title_delete_account">删除账号</string>
     <string name="msg_confirm_delete_account">确定要删除账号「%1$s」吗？该账号保存的凭据将被清理。</string>
     <string name="btn_confirm_delete">确认删除</string>

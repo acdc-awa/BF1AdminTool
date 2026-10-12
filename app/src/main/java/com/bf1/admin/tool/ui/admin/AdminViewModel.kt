@@ -91,7 +91,14 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             _adminListUiState.value = AdminListUiState.Loading
-            val account = accountRepo.getActive()
+            var account = accountRepo.getActive()
+            if (account == null) {
+                val firstAccount = accountRepo.allAccounts.first().firstOrNull()
+                if (firstAccount != null) {
+                    accountRepo.switchActive(firstAccount.id)
+                    account = firstAccount
+                }
+            }
             _activeAccount.value = account
             if (account != null) {
                 val server = serverRepo.getActiveByOwner(account.personaId)
@@ -148,25 +155,14 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             accountRepo.delete(account)
             if (_activeAccount.value?.id == account.id) {
-                val newActive = accountRepo.getActive()
-                _activeAccount.value = newActive
-                val nextServer = newActive?.let { serverRepo.getActiveByOwner(it.personaId) }
-                _activeServer.value = nextServer
-                if (newActive != null) {
-                    loadDecryptedCredentials()
-                    if (nextServer != null) {
-                        _adminListUiState.value = AdminListUiState.Loading
-                        try {
-                            initSession(newActive)
-                            loadAdminList(isInitial = true)
-                        } catch (e: Exception) {
-                            _adminListUiState.value = classifyError(e)
-                        }
-                    } else {
-                        _adminList.value = emptyList()
-                        _adminListUiState.value = AdminListUiState.NoServer
-                    }
+                val remaining = accountRepo.allAccounts.first().filter { it.id != account.id }
+                val nextActive = remaining.firstOrNull()
+                if (nextActive != null) {
+                    switchAccount(nextActive)
                 } else {
+                    _activeAccount.value = null
+                    _activeServer.value = null
+                    _decryptedCredentials.value = null
                     _adminList.value = emptyList()
                     _adminListUiState.value = AdminListUiState.Idle
                 }
