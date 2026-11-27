@@ -42,6 +42,7 @@ fun SettingsTab(
     decryptedCredentials: AdminViewModel.DecryptedCredentials?,
     servers: List<ServerEntity>,
     isLoading: Boolean,
+    isRefreshingServers: Boolean,
     lookupServerName: String?,
     lookupServerId: String?,
     isLookingUpServer: Boolean,
@@ -50,6 +51,7 @@ fun SettingsTab(
     onShowServerDeleteDialog: (Boolean) -> Unit,
     onPendingDeleteServer: (ServerEntity?) -> Unit,
     onNavigateToLogin: () -> Unit,
+    onRefreshServers: () -> Unit,
     onLookupServer: (String) -> Unit,
     onAddServer: (String, () -> Unit) -> Unit,
     snackbarHostState: SnackbarHostState
@@ -256,15 +258,40 @@ fun SettingsTab(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     if (activeAccount != null) {
-                        FilledTonalIconButton(
-                            onClick = { showAddServerDialog = true },
-                            modifier = Modifier.size(36.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = stringResource(R.string.cd_add_server),
-                                modifier = Modifier.size(18.dp)
-                            )
+                            if (servers.isNotEmpty()) {
+                                FilledTonalIconButton(
+                                    onClick = onRefreshServers,
+                                    enabled = !isRefreshingServers,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    if (isRefreshingServers) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = stringResource(R.string.cd_refresh_servers),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            FilledTonalIconButton(
+                                onClick = { showAddServerDialog = true },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = stringResource(R.string.cd_add_server),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -318,14 +345,20 @@ fun SettingsTab(
                                             fontWeight = FontWeight.Medium,
                                             maxLines = 1
                                         )
-                                        if (!server.gameId.isNullOrEmpty()) {
-                                            Text(
-                                                text = stringResource(R.string.label_server_gid, server.gameId.orEmpty()),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                        val idSummary = buildString {
+                                            append(stringResource(R.string.label_server_sid, server.serverId))
+                                            if (!server.gameId.isNullOrEmpty()) {
+                                                append(" · ")
+                                                append(stringResource(R.string.label_server_gid, server.gameId.orEmpty()))
+                                            }
                                         }
+                                        Text(
+                                            text = idSummary,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
                                     }
                                     IconButton(
                                         onClick = {

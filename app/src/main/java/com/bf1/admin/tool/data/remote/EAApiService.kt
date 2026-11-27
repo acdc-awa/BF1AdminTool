@@ -510,6 +510,84 @@ class EAApiService {
         }
     }
 
+    /**
+     * RSP.getServerDetails：按不变的 8 位 serverId 查询最新服务器名与 persistedGameId (UUID)。
+     */
+    fun getRspServerIdentity(sessionId: String, serverId: String): RspServerIdentity {
+        val body = JSONObject().apply {
+            put("jsonrpc", "2.0")
+            put("method", "RSP.getServerDetails")
+            put("params", JSONObject().apply {
+                put("game", "tunguska")
+                put("serverId", serverId)
+            })
+            put("id", UUID.randomUUID().toString())
+        }
+
+        val request = Request.Builder()
+            .url(API_URL)
+            .header("X-GatewaySession", sessionId)
+            .header("X-ClientVersion", CLIENT_VERSION)
+            .header("X-DbId", DB_ID)
+            .header("Content-Type", "application/json")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val respBody = response.body?.string()
+                ?: throw Exception("Empty response getting RSP server details")
+            val json = JSONObject(respBody)
+            if (json.has("error")) {
+                val err = json.getJSONObject("error")
+                throw GatewayError(err.optInt("code"), err.optString("message"), "RSP.getServerDetails")
+            }
+            val result = json.optJSONObject("result")
+                ?: throw Exception("No result: $respBody")
+            return parseRspServerIdentity(result)
+        }
+    }
+
+    /**
+     * GameServer.searchServers：按服务器名搜索在线服务器，用于通过 guid == persistedGameId 找回最新 14 位 gameId。
+     */
+    fun searchServersByName(sessionId: String, serverName: String, limit: Int = 50): List<SearchServerEntry> {
+        val filterJson = JSONObject().apply {
+            put("name", serverName)
+        }.toString()
+        val body = JSONObject().apply {
+            put("jsonrpc", "2.0")
+            put("method", "GameServer.searchServers")
+            put("params", JSONObject().apply {
+                put("game", "tunguska")
+                put("limit", limit)
+                put("filterJson", filterJson)
+            })
+            put("id", UUID.randomUUID().toString())
+        }
+
+        val request = Request.Builder()
+            .url(API_URL)
+            .header("X-GatewaySession", sessionId)
+            .header("X-ClientVersion", CLIENT_VERSION)
+            .header("X-DbId", DB_ID)
+            .header("Content-Type", "application/json")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val respBody = response.body?.string()
+                ?: throw Exception("Empty response searching servers")
+            val json = JSONObject(respBody)
+            if (json.has("error")) {
+                val err = json.getJSONObject("error")
+                throw GatewayError(err.optInt("code"), err.optString("message"), "GameServer.searchServers")
+            }
+            val result = json.optJSONObject("result")
+                ?: throw Exception("No result: $respBody")
+            return parseSearchServersResult(result)
+        }
+    }
+
     fun getAdminList(sessionId: String, serverId: String): List<AdminInfo> {
         val body = JSONObject().apply {
             put("jsonrpc", "2.0")

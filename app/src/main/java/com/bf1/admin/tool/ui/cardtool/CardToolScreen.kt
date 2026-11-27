@@ -83,9 +83,14 @@ fun CardToolScreen(
         return
     }
 
-    // 新版本按 GameID 添加服务器，旧服务器没有 GameID 时提示重新添加
+    // 启动前会按 GameID / GUID 自动校准最新信息，只要选中了服务器即可启动
     val gameId = activeServer?.gameId
     val gameIdValid = gameId?.length == 14
+    val canStartCard = activeServer != null && (
+        activeServer!!.serverId.isNotBlank() ||
+            !activeServer!!.gameId.isNullOrBlank() ||
+            !activeServer!!.guid.isNullOrBlank()
+        )
 
     fun currentConfig() = buildConfig(
         gameId = gameId.orEmpty(),
@@ -203,7 +208,7 @@ fun CardToolScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { viewModel.startDiagnostic(currentConfig()) },
-                    enabled = gameIdValid,
+                    enabled = canStartCard,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
@@ -213,7 +218,7 @@ fun CardToolScreen(
                 }
                 Button(
                     onClick = { pendingConfirmTask = ConfirmTaskType.START_CARD },
-                    enabled = gameIdValid,
+                    enabled = canStartCard,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
@@ -230,7 +235,7 @@ fun CardToolScreen(
             // 自动锚定失败后的补救
             FilledTonalButton(
                 onClick = { pendingConfirmTask = ConfirmTaskType.MANUAL_ANCHOR },
-                enabled = gameIdValid,
+                enabled = canStartCard,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {

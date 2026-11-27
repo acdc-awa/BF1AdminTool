@@ -9,8 +9,26 @@ interface ServerDao {
     @Query("SELECT * FROM servers WHERE ownerPersonaId = :personaId ORDER BY isActive DESC, serverName ASC")
     fun getByOwner(personaId: String): Flow<List<ServerEntity>>
 
+    @Query("SELECT * FROM servers WHERE ownerPersonaId = :personaId ORDER BY isActive DESC, serverName ASC")
+    suspend fun getByOwnerOnce(personaId: String): List<ServerEntity>
+
     @Query("SELECT * FROM servers WHERE ownerPersonaId = :personaId AND isActive = 1 LIMIT 1")
     suspend fun getActiveByOwner(personaId: String): ServerEntity?
+
+    @Query("SELECT * FROM servers WHERE ownerPersonaId = :personaId AND LOWER(guid) = LOWER(:guid) LIMIT 1")
+    suspend fun findByOwnerAndGuid(personaId: String, guid: String): ServerEntity?
+
+    @Query("SELECT * FROM servers WHERE ownerPersonaId = :personaId AND serverId = :serverId LIMIT 1")
+    suspend fun findByOwnerAndServerId(personaId: String, serverId: String): ServerEntity?
+
+    @Query("UPDATE servers SET serverId = :serverId, serverName = :serverName, gameId = :gameId, guid = :guid WHERE id = :id")
+    suspend fun updateMetadata(
+        id: Long,
+        serverId: String,
+        serverName: String,
+        gameId: String?,
+        guid: String?
+    )
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(server: ServerEntity): Long

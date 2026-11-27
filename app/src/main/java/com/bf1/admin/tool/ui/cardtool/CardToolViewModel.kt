@@ -8,7 +8,9 @@ import com.bf1.admin.tool.cardtool.CardToolConfig
 import com.bf1.admin.tool.cardtool.CardToolService
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
-import com.bf1.admin.tool.data.repository.ServerRepository
+import com.bf1.admin.tool.data.remote.EAApiService
+import com.bf1.admin.tool.data.repository.ServerRefreshResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,7 +38,8 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
 
     private val app = application as BF1AdminApp
     private val accountRepo = app.accountRepository
-    private val serverRepo = ServerRepository(app.database.serverDao())
+    private val serverRepo = app.serverRepository
+    private val serverRefreshService = app.serverRefreshService
     private val service = CardToolService(app.credentialManager, app.cardToolApiService)
 
     val accounts: StateFlow<List<AccountEntity>> = accountRepo.allAccounts
@@ -85,20 +88,31 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** 只读诊断：登录 + 查询，不改服务器。 */
-    fun startDiagnostic(config: CardToolConfig) = start("诊断中") { service.runDiagnostic(config, it) }
+    /** 只读诊断：先严格校准最新 gameId，再登录 + 查询，不改服务器。 */
+    fun startDiagnostic(config: CardToolConfig) = startWithCalibration(config, "诊断中") { calibrated, emit ->
+        service.runDiagnostic(calibrated, emit)
+    }
 
-    /** 完整卡服流程（写操作）。 */
-    fun startCard(config: CardToolConfig) = start("准备中") { service.run(config, it) }
+    /** 完整卡服流程（写操作）：先严格校准最新 gameId，再执行卡服。 */
+    fun startCard(config: CardToolConfig) = startWithCalibration(config, "准备中") { calibrated, emit ->
+        service.run(calibrated, emit)
+    }
 
-    /** 手动锚定：先 Blaze 直连进服占位，再对当前轮换锚定一次（自动锚定失败后的补救）。 */
-    fun startManualAnchor(config: CardToolConfig) = start("手动锚定") { service.anchorNow(config, it) }
+    /** 手动锚定：先严格校准最新 gameId，再 Blaze 直连进服占位并锚定一次。 */
+    fun startManualAnchor(config: CardToolConfig) = startWithCalibration(config, "手动锚定") { calibrated, emit ->
+        service.anchorNow(calibrated, emit)
+    }
 
-    private fun start(phase: String, action: suspend ((CardToolService.Event) -> Unit) -> Unit) {
+    private fun startWithCalibration(
+        config: CardToolConfig,
+        nextPhase: String,
+        action: suspend (CardToolConfig, (CardToolService.Event) -> Unit) -> Unit
+    ) {
         if (_isRunning.value) return
+        val server = activeServer.value
         _logs.value = emptyList()
         _lastResult.value = null
-        _phase.value = phase
+        _phase.value = "校准服务器"
         _isRunning.value = true
         runJob = viewModelScope.launch(Dispatchers.IO) {
             val onEvent: (CardToolService.Event) -> Unit = { event ->
@@ -119,7 +133,57 @@ class CardToolViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
             }
-            action(onEvent)
+
+            if (server == null) {
+                onEvent(CardToolService.Event.Finished(false, "未选择目标服务器，请先在设置中选择服务器"))
+                return@launch
+            }
+
+            onEvent(CardToolService.Event.Log("正在校准服务器信息（GameID / GUID）..."))
+            val calibration = try {
+                serverRefreshService.calibrateForCardTool(server)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: EAApiService.CredentialsExpiredException) {
+                onEvent(CardToolService.Event.Finished(false, "校准失败：EA 凭证已过期，请重新登录"))
+                return@launch
+            } catch (e: Exception) {
+                onEvent(CardToolService.Event.Finished(false, "校准失败：${e.message ?: "未知错误"}"))
+                return@launch
+            }
+
+            when (calibration) {
+                is ServerRefreshResult.Failed -> {
+                    onEvent(CardToolService.Event.Finished(false, "校准服务器失败：${calibration.reason}"))
+                    return@launch
+                }
+                is ServerRefreshResult.Success -> {
+                    val latest = calibration.server
+                    val latestGameId = latest.gameId.orEmpty()
+                    if (calibration.gameIdChanged) {
+                        onEvent(
+                            CardToolService.Event.Log(
+                                "GameID 已更新：${server.gameId ?: "无"} → $latestGameId"
+                            )
+                        )
+                    }
+                    if (calibration.serverIdChanged) {
+                        onEvent(
+                            CardToolService.Event.Log(
+                                "ServerID 已更新：${server.serverId} → ${latest.serverId}"
+                            )
+                        )
+                    }
+                    if (calibration.nameChanged) {
+                        onEvent(CardToolService.Event.Log("服务器名称已更新：${latest.serverName}"))
+                    }
+                    if (!calibration.gameIdChanged && !calibration.serverIdChanged && !calibration.nameChanged) {
+                        onEvent(CardToolService.Event.Log("校准通过：${latest.serverName} (GameID=$latestGameId)"))
+                    }
+                    onEvent(CardToolService.Event.Phase(nextPhase))
+                    action(config.copy(gameId = latestGameId), onEvent)
+                }
+            }
         }
     }
 

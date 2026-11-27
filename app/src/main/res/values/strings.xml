@@ -88,7 +88,7 @@
     <string name="msg_card_keepalive_default">执行长连接保活中...</string>
     <string name="msg_card_idle_hint">配置完毕后点击下方按钮启动</string>
     <string name="title_card_missing_gameid">该服务器未保存 GameID</string>
-    <string name="msg_card_missing_gameid">旧版服务器缺少 GameID，请在「设置」中删除后重新添加服务器。</string>
+    <string name="msg_card_missing_gameid">旧版服务器缺少 GameID，可在「设置」点击刷新，或直接启动时通过 ServerID 自动校准。</string>
     <string name="btn_stop_card">停止</string>
     <string name="btn_verify_account">验证账号</string>
     <string name="btn_start_card">开始卡行动</string>
@@ -131,9 +131,11 @@
     <string name="msg_no_ea_account_logged_in">暂未登录 EA 账号，请先添加登录凭证以使用服务器管理功能。</string>
     <string name="btn_login_add_ea_account">登录添加 EA 账号</string>
     <string name="title_server_list_count">服务器列表 (%1$d)</string>
+    <string name="cd_refresh_servers">刷新服务器信息</string>
     <string name="cd_add_server">添加服务器</string>
     <string name="msg_login_ea_first_to_load_servers">请先登录 EA 账号以载入和添加服务器</string>
     <string name="msg_empty_server_list_hint">暂未添加任何服务器，点击右上角 + 添加</string>
+    <string name="label_server_sid">SID: %1$s</string>
     <string name="label_server_gid">GID: %1$s</string>
     <string name="title_about_tool">关于工具</string>
     <string name="label_current_version">当前版本：v%1$s (Build %2$d)</string>

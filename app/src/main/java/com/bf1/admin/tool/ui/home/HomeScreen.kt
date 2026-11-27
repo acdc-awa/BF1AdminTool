@@ -44,6 +44,7 @@ fun HomeScreen(
     val adminList by viewModel.adminList.collectAsState()
     val adminListUiState by viewModel.adminListUiState.collectAsState()
     val isRefreshingAdminList by viewModel.isRefreshingAdminList.collectAsState()
+    val isRefreshingServers by viewModel.isRefreshingServers.collectAsState()
     val expiredAccount by viewModel.expiredAccount.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val decryptedCredentials by viewModel.decryptedCredentials.collectAsState()
@@ -556,6 +557,7 @@ fun HomeScreen(
                 decryptedCredentials = decryptedCredentials,
                 servers = servers,
                 isLoading = isLoading,
+                isRefreshingServers = isRefreshingServers,
                 lookupServerName = lookupServerName,
                 lookupServerId = lookupServerId,
                 isLookingUpServer = isLookingUpServer,
@@ -564,6 +566,7 @@ fun HomeScreen(
                 onShowServerDeleteDialog = { showServerDeleteDialog = it },
                 onPendingDeleteServer = { pendingDeleteServer = it },
                 onNavigateToLogin = onNavigateToLogin,
+                onRefreshServers = { viewModel.refreshServersManually() },
                 onLookupServer = { viewModel.lookupServer(it) },
                 onAddServer = { serverId, onSuccess ->
                     viewModel.addServerFromSettings(serverId, onSuccess)

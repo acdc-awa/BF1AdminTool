@@ -12,7 +12,7 @@ import com.bf1.admin.tool.data.local.entity.ServerEntity
 
 @Database(
     entities = [AccountEntity::class, ServerEntity::class, SessionCacheEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,7 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "bf1_admin.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { INSTANCE = it }
             }
         }
 
@@ -60,6 +60,13 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE accounts ADD COLUMN junoRefreshToken TEXT")
+            }
+        }
+
+        /** v4 → v5：servers 表新增可空 guid 列（persistedGameId，服务器永久不变标识）。 */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE servers ADD COLUMN guid TEXT")
             }
         }
     }

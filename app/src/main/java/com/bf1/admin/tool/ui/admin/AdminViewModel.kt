@@ -7,6 +7,7 @@ import com.bf1.admin.tool.BF1AdminApp
 import com.bf1.admin.tool.data.local.entity.AccountEntity
 import com.bf1.admin.tool.data.local.entity.ServerEntity
 import com.bf1.admin.tool.data.remote.EAApiService
+import com.bf1.admin.tool.data.repository.ServerRefreshService
 import com.bf1.admin.tool.data.repository.ServerRepository
 import com.bf1.admin.tool.data.session.PlayerResolveSource
 import kotlinx.coroutines.Dispatchers
@@ -16,11 +17,11 @@ import kotlinx.coroutines.withContext
 
 class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as BF1AdminApp
-    private val db = app.database
     private val accountRepo = app.accountRepository
-    private val serverRepo = ServerRepository(db.serverDao())
+    private val serverRepo = app.serverRepository
     private val adminRepo = app.adminRepository
     private val credentialManager = app.credentialManager
+    private val serverRefreshService: ServerRefreshService = app.serverRefreshService
 
     val accounts: StateFlow<List<AccountEntity>> = accountRepo.allAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -67,6 +68,9 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val _isRefreshingAdminList = MutableStateFlow(false)
     val isRefreshingAdminList: StateFlow<Boolean> = _isRefreshingAdminList.asStateFlow()
 
+    private val _isRefreshingServers = MutableStateFlow(false)
+    val isRefreshingServers: StateFlow<Boolean> = _isRefreshingServers.asStateFlow()
+
     // ── 凭证查看 ──
     data class DecryptedCredentials(val remid: String, val sid: String)
 
@@ -89,6 +93,43 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private var lookupGeneration = 0L
 
     init {
+        // 跟随 Room 服务器列表流同步当前选中服务器的最新名称与 gameId
+        viewModelScope.launch {
+            servers.collect { list ->
+                val currentActive = list.firstOrNull { it.isActive }
+                if (currentActive != null) {
+                    _activeServer.value = currentActive
+                } else if (_activeServer.value != null && list.none { it.id == _activeServer.value?.id }) {
+                    _activeServer.value = null
+                }
+            }
+        }
+
+        // 跟随 Room 账号表实时同步当前账号的解密凭证（EA cookie 轮换落库后立刻同步到「查看Cookies」）
+        viewModelScope.launch {
+            combine(
+                accountRepo.allAccounts,
+                _activeAccount.map { it?.id }.distinctUntilChanged()
+            ) { list, activeId ->
+                if (activeId == null) null else list.firstOrNull { it.id == activeId }
+            }
+                .distinctUntilChangedBy { it?.let { a -> Triple(a.id, a.remid, a.sid) } }
+                .collect { account ->
+                    if (account == null) {
+                        _decryptedCredentials.value = null
+                    } else {
+                        try {
+                            val enc = withContext(Dispatchers.IO) { accountRepo.getDecryptedById(account.id) }
+                            _decryptedCredentials.value = enc?.let {
+                                DecryptedCredentials(remid = it.remid, sid = it.sid)
+                            }
+                        } catch (e: Exception) {
+                            _message.emit("加载凭证失败: ${e.message}")
+                        }
+                    }
+                }
+        }
+
         viewModelScope.launch {
             _adminListUiState.value = AdminListUiState.Loading
             var account = accountRepo.getActive()
@@ -103,7 +144,8 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             if (account != null) {
                 val server = serverRepo.getActiveByOwner(account.personaId)
                 _activeServer.value = server
-                loadDecryptedCredentials()
+                // 启动时静默按需刷新服务器元数据（带 30 分钟冷却）
+                launchSilentServerRefresh(account)
                 if (server != null) {
                     try {
                         initSession(account)
@@ -126,7 +168,8 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             _activeAccount.value = account
             val server = serverRepo.getActiveByOwner(account.personaId)
             _activeServer.value = server
-            loadDecryptedCredentials()
+            // 切换账号后静默按需刷新新账号的服务器元数据（带 30 分钟冷却）
+            launchSilentServerRefresh(account)
             if (server != null) {
                 _adminListUiState.value = AdminListUiState.Loading
                 try {
@@ -138,6 +181,52 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _adminList.value = emptyList()
                 _adminListUiState.value = AdminListUiState.NoServer
+            }
+        }
+    }
+
+    /** 启动/切换账号时静默刷新服务器名称与 gameId（受 30 分钟冷却约束）。 */
+    private fun launchSilentServerRefresh(account: AccountEntity) {
+        viewModelScope.launch {
+            try {
+                serverRefreshService.refreshAccountServers(account.personaId, force = false)
+            } catch (_: EAApiService.CredentialsExpiredException) {
+                if (_activeAccount.value?.id == account.id) {
+                    _expiredAccount.value = account
+                }
+            } catch (_: Exception) {
+                // 启动静默刷新不打扰用户
+            }
+        }
+    }
+
+    /** 设置页手动刷新当前账号下的全部服务器（无冷却）。 */
+    fun refreshServersManually() {
+        val account = _activeAccount.value ?: return
+        if (_isRefreshingServers.value) return
+        viewModelScope.launch {
+            _isRefreshingServers.value = true
+            try {
+                val summary = serverRefreshService.refreshAccountServers(account.personaId, force = true)
+                val msg = when {
+                    summary.total == 0 -> "当前账号暂无服务器"
+                    summary.failed == 0 && summary.updated > 0 ->
+                        "已刷新 ${summary.total} 台服务器，${summary.updated} 台有更新"
+                    summary.failed == 0 ->
+                        "已检查 ${summary.total} 台服务器，均为最新"
+                    summary.updated + summary.unchanged == 0 ->
+                        "刷新失败: ${summary.firstError ?: "请检查网络或权限"}"
+                    else ->
+                        "刷新完成：成功 ${summary.updated + summary.unchanged}/${summary.total} 台，失败 ${summary.failed} 台"
+                }
+                _message.emit(msg)
+            } catch (e: EAApiService.CredentialsExpiredException) {
+                _expiredAccount.value = account
+                _message.emit("刷新失败：EA 凭证已过期，请重新登录")
+            } catch (e: Exception) {
+                _message.emit("刷新失败: ${e.message ?: "未知错误"}")
+            } finally {
+                _isRefreshingServers.value = false
             }
         }
     }
@@ -287,25 +376,6 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── 凭证查看 ──
-    private fun loadDecryptedCredentials() {
-        viewModelScope.launch {
-            val account = _activeAccount.value
-            if (account == null) {
-                _decryptedCredentials.value = null
-                return@launch
-            }
-            try {
-                val enc = accountRepo.getDecryptedById(account.id)
-                _decryptedCredentials.value = enc?.let {
-                    DecryptedCredentials(remid = it.remid, sid = it.sid)
-                }
-            } catch (e: Exception) {
-                _message.emit("加载凭证失败: ${e.message}")
-            }
-        }
-    }
-
     // ── 服务器查询（用于设置页添加服务器弹窗）──
     fun lookupServer(gameId: String) {
         val generation = ++lookupGeneration
@@ -355,22 +425,28 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 val account = _activeAccount.value ?: return@launch
-                val newId = serverRepo.addServer(
+                val guid = rsp.persistedGameId.takeIf { it.isNotBlank() }
+                val (rowId, isUpdated) = serverRepo.addOrUpdateServer(
                     serverId = rsp.serverId,
                     serverName = rsp.serverSettings.name,
                     ownerPersonaId = account.personaId,
-                    gameId = rsp.gameId
+                    gameId = rsp.gameId,
+                    guid = guid
                 )
-                serverRepo.switchActive(account.personaId, newId)
+                serverRepo.switchActive(account.personaId, rowId)
                 _activeServer.value = ServerEntity(
-                    id = newId,
+                    id = rowId,
                     serverId = rsp.serverId,
                     serverName = rsp.serverSettings.name,
                     ownerPersonaId = account.personaId,
                     isActive = true,
-                    gameId = rsp.gameId
+                    gameId = rsp.gameId,
+                    guid = guid
                 )
-                _message.emit("已添加服务器: ${rsp.serverSettings.name}")
+                _message.emit(
+                    if (isUpdated) "已更新服务器信息: ${rsp.serverSettings.name}"
+                    else "已添加服务器: ${rsp.serverSettings.name}"
+                )
                 onSuccess()
             } catch (e: Exception) {
                 _message.emit("添加服务器失败: ${e.message}")

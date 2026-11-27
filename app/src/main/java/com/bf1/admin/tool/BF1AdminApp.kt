@@ -6,6 +6,8 @@ import com.bf1.admin.tool.data.remote.CardToolApiService
 import com.bf1.admin.tool.data.remote.EAApiService
 import com.bf1.admin.tool.data.repository.AccountRepository
 import com.bf1.admin.tool.data.repository.AdminRepository
+import com.bf1.admin.tool.data.repository.ServerRefreshService
+import com.bf1.admin.tool.data.repository.ServerRepository
 import com.bf1.admin.tool.data.session.CredentialManager
 import com.bf1.admin.tool.data.session.SessionRefreshScheduler
 
@@ -16,6 +18,10 @@ class BF1AdminApp : Application() {
 
     val accountRepository: AccountRepository by lazy {
         AccountRepository(database.accountDao(), this)
+    }
+
+    val serverRepository: ServerRepository by lazy {
+        ServerRepository(database.serverDao())
     }
 
     /** 共享网络层实例：单一 okhttp 连接池；所有兑换经同一组底层 API。 */
@@ -35,6 +41,16 @@ class BF1AdminApp : Application() {
             sessionCacheDao = database.sessionCacheDao(),
             eaApi = eaApiService,
             cardToolApi = cardToolApiService
+        )
+    }
+
+    /** 服务器元数据按需刷新服务（serverId → 最新服名 & gameId）。 */
+    val serverRefreshService: ServerRefreshService by lazy {
+        ServerRefreshService.create(
+            context = this,
+            serverRepository = serverRepository,
+            credentialManager = credentialManager,
+            eaApiService = eaApiService
         )
     }
 
